@@ -62,8 +62,8 @@ Default template allows basic level of color customization, if you want to chang
 ```
 [template_settings]
 text-color = "#c7cfcc"
-highlight-color = "#73bed3"
-accent-color = "#3c5e8b"
+highlight-color = "#FF662D"
+accent-color = "#2EC7FF"
 background-color = "#181818"
 custom-color = "#f3a833"
 autoreload = "1"
