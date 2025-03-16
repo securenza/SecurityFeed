@@ -4,7 +4,7 @@
 # hosted as default page for the user 
 # (eg <username>.github.io), in that case it should be
 # set to '/'
-site_path = "/"
+site_path = "/SecurityFeed"
 # Title of the site
 title = "SecurityFeed"
 # Update site url if you're planning on using aggregated OPML
