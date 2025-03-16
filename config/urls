@@ -1,5 +1,6 @@
 
 # Security Feeds
+https://feeds.feedburner.com/TheHackersNews ! security
 https://krebsonsecurity.com/feed/ ! security
 https://www.schneier.com/blog/atom.xml ! security
 https://threatpost.com/feed ! security
@@ -20,16 +21,16 @@ https://www.reddit.com/r/netsec/top/.rss?sort=top&t=day&limit=6 "~Reddit - NetSe
 "query:Reddit:tags # \"reddit\" and age < 2 and unread = \"yes\""
 
 # Threat Intelligence Feeds
-https://blog.talosintelligence.com/feeds/posts/default ! threat-intel
-https://unit42.paloaltonetworks.com/feed/ ! threat-intel
-https://www.recordedfuture.com/feed ! threat-intel
-https://www.fireeye.com/blog/threat-research/_jcr_content.par.feed.xml ! threat-intel
-https://www.cisa.gov/uscert/ncas/current-activity/current-activity.xml ! threat-intel
-https://www.cisa.gov/uscert/ncas/alerts/alerts.xml ! threat-intel
-https://securityintelligence.com/feed ! threat-intel
-https://isc.sans.edu/rssfeed.xml ! threat-intel
+https://blog.talosintelligence.com/feeds/posts/default ! threatintel
+https://unit42.paloaltonetworks.com/feed/ ! threatintel
+https://www.recordedfuture.com/feed ! threatintel
+https://www.fireeye.com/blog/threat-research/_jcr_content.par.feed.xml ! threatintel
+https://www.cisa.gov/uscert/ncas/current-activity/current-activity.xml ! threatintel
+https://www.cisa.gov/uscert/ncas/alerts/alerts.xml ! threatintel
+https://securityintelligence.com/feed ! threatintel
+https://isc.sans.edu/rssfeed.xml ! threatintel
 
-"query:Threat Intelligence:tags # \"threat-intel\" and age < 2 and unread = \"yes\""
+"query:Threat Intelligence:tags # \"threatintel\" and age < 2 and unread = \"yes\""
 
 # Hacker News Feed
 https://hnrss.org/best "~HackerNews" dev
