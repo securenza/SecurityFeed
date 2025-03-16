@@ -45,7 +45,6 @@ https://hackernoon.com/feed "~Tech - HackerNoon" ! tech
 "query:Tech News:tags # \"tech\" and age < 2 and unread = \"yes\""
 
 # World News Feedds
-https://access.acast.com/rss/theeconomistmorningbriefing/default "~News - Daily Brief" news
 https://www.youtube.com/feeds/videos.xml?channel_id=UCknLrEdhRCp1aegoMqRaCZg "~News - DW" news" !
 https://www.youtube.com/feeds/videos.xml?channel_id=UC52X5wxOL_s5yw0dQk7NtgA "~News - AP" news" !
 https://www.youtube.com/feeds/videos.xml?channel_id=UCK7tptUDHh-RYDsdxO1-5QQ "~News - Wall Street Journal" ! news
