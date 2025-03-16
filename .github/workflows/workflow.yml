@@ -1,4 +1,4 @@
-name: Liveboat feed build
+name: SecurityFeed build
 
 on:
   schedule:
@@ -8,7 +8,7 @@ on:
         - 'build*'
 
 jobs:
-  liveboat-feed-build:
+  securityfeed-build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
