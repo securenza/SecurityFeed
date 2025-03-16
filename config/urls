@@ -1,45 +1,49 @@
+
+# Security Feeds
+https://krebsonsecurity.com/feed/ ! security
+https://www.schneier.com/blog/atom.xml ! security
+https://threatpost.com/feed ! security
+https://feeds.feedburner.com/TheHackersNews?format=xml ! security
+https://www.bleepingcomputer.com/feed/ ! security
+https://www.darkreading.com/rss_simple.asp ! security
+https://feeds.dshield.org/rss/diary ! security
+https://feeds.feedburner.com/nakedsecurity ! security
+https://blog.talosintelligence.com/feeds/posts/default ! security
+https://msrc-blog.microsoft.com/feed/ ! security
+https://nvd.nist.gov/feeds ! security
+
 "query:Security News:tags # \"security\" and age < 2 and unread = \"yes\""
-"query:Threat Intelligence:tags # \"threat-intel\" and age < 2 and unread = \"yes\""
+
+# Reddit NetSec Feed
+https://www.reddit.com/r/netsec/top/.rss?sort=top&t=day&limit=6 "~Reddit - NetSec" ! reddit
+
 "query:Reddit:tags # \"reddit\" and age < 2 and unread = \"yes\""
-"query:Tech News:tags # \"tech\" and age < 2 and unread = \"yes\""
-"query:Dev News:tags # \"dev\" and age < 2 and unread = \"yes\""
-"query:World News:tags # \"news\" and age < 1 and unread = \"yes\""
-"query:Podcasts:tags # \"podcast\" and unread = \"yes\""
-"query:Youtube:tags # \"yt\""
 
-https://krebsonsecurity.com/feed/ "~Security News" security
-https://www.schneier.com/blog/atom.xml "~Security News" security
-https://threatpost.com/feed "~Security News" security
-https://feeds.feedburner.com/TheHackersNews?format=xml "~Security News" security
-https://www.bleepingcomputer.com/feed/ "~Security News" security
-https://www.darkreading.com/rss_simple.asp "~Security News" security
-https://feeds.dshield.org/rss/diary "~Security News" security
-https://feeds.feedburner.com/nakedsecurity "~Security News" security
-https://blog.talosintelligence.com/feeds/posts/default "~Security News" security
-https://msrc-blog.microsoft.com/feed/ "~Security News" security
-https://nvd.nist.gov/feeds "~Security News" security
+# Threat Intelligence Feeds
+https://blog.talosintelligence.com/feeds/posts/default ! threat-intel
+https://unit42.paloaltonetworks.com/feed/ ! threat-intel
+https://www.recordedfuture.com/feed ! threat-intel
+https://www.fireeye.com/blog/threat-research/_jcr_content.par.feed.xml ! threat-intel
+https://www.cisa.gov/uscert/ncas/current-activity/current-activity.xml ! threat-intel
+https://www.cisa.gov/uscert/ncas/alerts/alerts.xml ! threat-intel
+https://securityintelligence.com/feed ! threat-intel
+https://isc.sans.edu/rssfeed.xml ! threat-intel
 
-https://www.reddit.com/r/netsec/top/.rss?sort=top&t=day&limit=6 "~Reddit - NetSec" security reddit
+"query:Threat Intelligence:tags # \"threat-intel\" and age < 2 and unread = \"yes\""
 
-https://hnrss.org/best "~HN" dev hn
-https://hnrss.org/show?points=60 "~HN Show" dev hn
-https://hnrss.org/frontpage?points=75 "~HN Front" dev hn
+# Hacker News Feed
+https://hnrss.org/best "~HackerNews" dev
 
-
-http://blog.golang.org/feed.atom "~Dev - Golang Blog" dev go
-https://www.reddit.com/r/golang/top/.rss?sort=top&t=day&limit=6 "~Reddit - Go" dev reddit go
-https://www.reddit.com/r/rust/top/.rss?sort=top&t=day&limit=6 "~Reddit - Rust" dev reddit rust
-https://www.reddit.com/r/linux/top/.rss?sort=top&t=day&limit=6 "~Reddit - Linux" dev reddit
-https://www.reddit.com/r/kubernetes/top/.rss?sort=top&t=day&limit=6 "~Reddit - Kubernetes" dev reddit k8s
-https://www.reddit.com/r/programming/top/.rss?sort=top&t=day&limit=6 "~Reddit - Programming" dev reddit
-https://blog.pythonlibrary.org/feed "~Dev - Python Blog" dev python
-
+# Tech Feeds
 https://techcrunch.com/feed/ ! tech
 http://rss.slashdot.org/Slashdot/slashdotMain ! tech
 https://www.codeproject.com/WebServices/ArticleRSS.aspx ! tech
 https://feeds.arstechnica.com/arstechnica/technology-lab ! tech
 https://hackernoon.com/feed "~Tech - HackerNoon" ! tech
 
+"query:Tech News:tags # \"tech\" and age < 2 and unread = \"yes\""
+
+# World News Feedds
 https://access.acast.com/rss/theeconomistmorningbriefing/default "~News - Daily Brief" news
 https://www.youtube.com/feeds/videos.xml?channel_id=UCknLrEdhRCp1aegoMqRaCZg "~News - DW" news" !
 https://www.youtube.com/feeds/videos.xml?channel_id=UC52X5wxOL_s5yw0dQk7NtgA "~News - AP" news" !
@@ -49,13 +53,18 @@ https://www.youtube.com/feeds/videos.xml?channel_id=UChqUTb7kYRX8-EiaN3XFrSQ "~N
 https://www.reddit.com/r/worldnews/top/.rss?sort=top&t=day&limit=10 "~News - Reddit - World News" news reddit
 https://www.reddit.com/r/europe/top/.rss?sort=top&t=day&limit=10 "~News - Reddit - Europe" news reddit
 
+"query:World News:tags # \"news\" and age < 1 and unread = \"yes\""
+
+# Podcasts
 https://securityweekly.com/feed/podcast "~Security Podcast" security ! podcast
 https://feeds.buzzsprout.com/2105116.rss "~Podcast - Cmd+Shift+Left" ! podcast
 https://www.youtube.com/feeds/videos.xml?channel_id=UCzQUP1qoWDoEbmsQxvdjxgQ "~Podcast - Joe Rogan" ! podcast
 https://www.youtube.com/feeds/videos.xml?channel_id=UCSHZKyawb77ixDdsGog4iWA "~Podcast - Lex Fridman" ! podcast
 https://www.youtube.com/feeds/videos.xml?channel_id=UCl9StMQ79LtEvlrskzjoYbQ "~Podcast - Closer to Truth" ! podcast
 
+"query:Podcasts:tags # \"podcast\" and unread = \"yes\""
 
+# Youtube Channels
 # Astrum
 https://www.youtube.com/feeds/videos.xml?channel_id=UC-9b7aDP6ZN0coj9-xFnrtw ! yt
 # Veritasium
@@ -66,3 +75,5 @@ https://www.youtube.com/feeds/videos.xml?channel_id=UCLXo7UDZvByw2ixzpQCufnA ! y
 https://www.youtube.com/feeds/videos.xml?channel_id=UCR1D15p_vdP3HkrH8wgjQRw ! yt
 # Real Engineering
 https://www.youtube.com/feeds/videos.xml?channel_id=UCR1IuLEqb6UEA_zQ81kwXfg ! yt
+
+"query:Youtube:tags # \"yt\""
