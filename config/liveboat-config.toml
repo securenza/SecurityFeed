@@ -6,7 +6,7 @@
 # set to '/'
 site_path = "/"
 # Title of the site
-title = "BörüFeed"
+title = "SecurityFeed"
 # Update site url if you're planning on using aggregated OPML
 # channel Liveboat exposes.
 #site_url = "https://konrad.website/liveboat-github-runner/"
