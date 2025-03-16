@@ -16,7 +16,7 @@ https://nvd.nist.gov/feeds ! security
 "query:Security News:tags # \"security\" and age < 2 and unread = \"yes\""
 
 # Reddit NetSec Feed
-https://www.reddit.com/r/netsec/top/.rss?sort=top&t=day&limit=6 "~Reddit - NetSec" ! reddit
+https://www.reddit.com/r/netsec/top/.rss?sort=top&t=day&limit=6 "~Reddit - NetSec" reddit netsec
 
 "query:Reddit:tags # \"reddit\" and age < 2 and unread = \"yes\""
 
@@ -45,19 +45,18 @@ https://hackernoon.com/feed "~Tech - HackerNoon" ! tech
 "query:Tech News:tags # \"tech\" and age < 2 and unread = \"yes\""
 
 # World News Feedds
-https://www.youtube.com/feeds/videos.xml?channel_id=UCknLrEdhRCp1aegoMqRaCZg "~News - DW" news" !
-https://www.youtube.com/feeds/videos.xml?channel_id=UC52X5wxOL_s5yw0dQk7NtgA "~News - AP" news" !
+https://www.youtube.com/feeds/videos.xml?channel_id=UCknLrEdhRCp1aegoMqRaCZg "~News - DW" ! news" 
+https://www.youtube.com/feeds/videos.xml?channel_id=UC52X5wxOL_s5yw0dQk7NtgA "~News - AP" ! news"
 https://www.youtube.com/feeds/videos.xml?channel_id=UCK7tptUDHh-RYDsdxO1-5QQ "~News - Wall Street Journal" ! news
 https://www.youtube.com/feeds/videos.xml?channel_id=UCIALMKvObZNtJ6AmdCLP7Lg "~News - Bloomberg " ! news
 https://www.youtube.com/feeds/videos.xml?channel_id=UChqUTb7kYRX8-EiaN3XFrSQ "~News - Reuters " ! news
-https://www.reddit.com/r/worldnews/top/.rss?sort=top&t=day&limit=10 "~News - Reddit - World News" news reddit
-https://www.reddit.com/r/europe/top/.rss?sort=top&t=day&limit=10 "~News - Reddit - Europe" news reddit
+https://www.reddit.com/r/worldnews/top/.rss?sort=top&t=day&limit=10 "~News - Reddit - World News" ! news reddit
+https://www.reddit.com/r/europe/top/.rss?sort=top&t=day&limit=10 "~News - Reddit - Europe" ! news reddit
 
 "query:World News:tags # \"news\" and age < 1 and unread = \"yes\""
 
 # Podcasts
 https://securityweekly.com/feed/podcast "~Security Podcast" security ! podcast
-https://feeds.buzzsprout.com/2105116.rss "~Podcast - Cmd+Shift+Left" ! podcast
 https://www.youtube.com/feeds/videos.xml?channel_id=UCzQUP1qoWDoEbmsQxvdjxgQ "~Podcast - Joe Rogan" ! podcast
 https://www.youtube.com/feeds/videos.xml?channel_id=UCSHZKyawb77ixDdsGog4iWA "~Podcast - Lex Fridman" ! podcast
 https://www.youtube.com/feeds/videos.xml?channel_id=UCl9StMQ79LtEvlrskzjoYbQ "~Podcast - Closer to Truth" ! podcast
@@ -65,15 +64,9 @@ https://www.youtube.com/feeds/videos.xml?channel_id=UCl9StMQ79LtEvlrskzjoYbQ "~P
 "query:Podcasts:tags # \"podcast\" and unread = \"yes\""
 
 # Youtube Channels
-# Astrum
-https://www.youtube.com/feeds/videos.xml?channel_id=UC-9b7aDP6ZN0coj9-xFnrtw ! yt
-# Veritasium
-https://www.youtube.com/feeds/videos.xml?channel_id=UCHnyfMqiRRG1u-2MsSQLbXA ! yt
-# Vox
-https://www.youtube.com/feeds/videos.xml?channel_id=UCLXo7UDZvByw2ixzpQCufnA ! yt
-# Internet Historian
-https://www.youtube.com/feeds/videos.xml?channel_id=UCR1D15p_vdP3HkrH8wgjQRw ! yt
-# Real Engineering
-https://www.youtube.com/feeds/videos.xml?channel_id=UCR1IuLEqb6UEA_zQ81kwXfg ! yt
+# Seytonic
+https://www.youtube.com/feeds/videos.xml?channel_id=UCW6xlqxSY3gGur4PkGPEUeA ! yt
+# Darknet Diaries
+https://www.youtube.com/feeds/videos.xml?channel_id=UCMIqrmh2lMdzhlCPK5ahsAg ! yt
 
 "query:Youtube:tags # \"yt\""
