@@ -29,10 +29,10 @@ https://isc.sans.edu/rssfeed.xml ! threatintel
 
 "query:Threat Intelligence:tags # \"threatintel\" and age < 5 and unread = \"yes\""
 
-https://github.com/Cybermonit/RSS-Feed/blob/main/ddos.xml "~DDoS Attacks" ddos
-https://github.com/Cybermonit/RSS-Feed/blob/main/leaks.xml "~Recent Data breaches" databreach
-https://github.com/Cybermonit/RSS-Feed/blob/main/ransomware.xml "~Latest Ransomware Attacks" ransomware
-https://github.com/Cybermonit/RSS-Feed/blob/main/cve2025.xml "~Recent Critical Vulnerabilities" vulns 
+https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/leaks.xml "~Recent Data breaches" databreach security
+https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/ransomware.xml "~Latest Ransomware Attacks" ransomware security
+https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/cve2025.xml "~Recent Critical Vulnerabilities" vulns security
+https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/eol.xml "~End of Life" eol security
 
 # Youtube Channels
 # Seytonic
