@@ -4,6 +4,16 @@
 # feed agregation syntax: "query:Title:tags # \"tag1\"" and age <= {day:int}
 # example: query:<name of feed>:<filter expression> [<tag> ...]
 
+# Queries
+"query:Security News:tags # \"security\" and age < 3 and unread = \"yes\""
+"query:Threat Intelligence:tags # \"threatintel\" and age < 3 and unread = \"yes\""
+"query:Latest Data breaches:tags # \"databreach\" and age < 3 and unread = \"yes\""
+"query:Tech News:tags # \"tech\" and age < 2 and unread = \"yes\""
+"query:Podcasts:tags # \"podcast\" and age < 30 and unread = \"yes\""
+"query:Youtube:tags # \"yt\""
+"query:Latest World News:tags # \"news\" and age < 2 and unread = \"yes\""
+
+
 # Security Feed URLs
 https://feeds.feedburner.com/TheHackersNews ! security 
 https://krebsonsecurity.com/feed/ ! security
@@ -18,9 +28,6 @@ https://blog.talosintelligence.com/feeds/posts/default ! security
 https://msrc-blog.microsoft.com/feed/ ! security
 https://nvd.nist.gov/feeds ! security
 
-# Fresh from the press
-
-"query:Security News:tags # \"security\" and age < 3 and unread = \"yes\""
 
 # Reddit NetSec Feed
 https://www.reddit.com/r/netsec/top/.rss?t=week "~Reddit - NetSec" netsec
@@ -35,18 +42,14 @@ https://www.cisa.gov/uscert/ncas/alerts/alerts.xml ! threatintel
 https://securityintelligence.com/feed ! threatintel
 https://isc.sans.edu/rssfeed.xml ! threatintel
 
-"query:Threat Intelligence:tags # \"threatintel\" and age < 3 and unread = \"yes\""
-
 # Data breaches
 https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/leaks.xml "~Recent Data breaches" ! databreach 
 https://www.databreaches.net/feed/ "~Recent Data breaches" ! databreach
 https://krebsonsecurity.com/category/data-breaches/feed/ "~Recent Data breaches" ! databreach
-
-"query:Latest Data breaches:tags # \"databreach\" and age < 3 and unread = \"yes\""
-
 # https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/ransomware.xml "~Latest Ransomware Attacks" ransomware 
 # https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/eol.xml "~End of Life" eol
 
+# Recent Vulns
 https://vuldb.com/?rss.recent "~Recent Vulnerabilities" vulns
 
 https://tweakers.net/feeds/nieuws.xml "~Tweakers" tweakers 
@@ -58,29 +61,21 @@ https://www.codeproject.com/WebServices/ArticleRSS.aspx ! tech
 https://feeds.arstechnica.com/arstechnica/technology-lab ! tech
 https://hackernoon.com/feed "~Tech - HackerNoon" ! tech
 
-"query:Tech News:tags # \"tech\" and age < 2 and unread = \"yes\""
-
-
 # Podcasts
 https://securityweekly.com/feed/podcast "~Podcast - Security Weekly" ! podcast
 https://www.youtube.com/feeds/videos.xml?channel_id=UCzQUP1qoWDoEbmsQxvdjxgQ "~Podcast - Joe Rogan" ! podcast
 https://www.youtube.com/feeds/videos.xml?channel_id=UCSHZKyawb77ixDdsGog4iWA "~Podcast - Lex Fridman" ! podcast
 https://www.youtube.com/feeds/videos.xml?channel_id=UCl9StMQ79LtEvlrskzjoYbQ "~Podcast - Closer to Truth" ! podcast   
 
-"query:Podcasts:tags # \"podcast\" and age < 30 and unread = \"yes\""
-
-# Youtube Channels
 # Seytonic
 https://www.youtube.com/feeds/videos.xml?channel_id=UCW6xlqxSY3gGur4PkGPEUeA ! yt
 # Darknet Diaries
 https://www.youtube.com/feeds/videos.xml?channel_id=UCMIqrmh2lMdzhlCPK5ahsAg ! yt
 
-"query:Youtube:tags # \"yt\""
-
 # Hacker News Feed
 https://hnrss.org/best "~Best of HackerNews" dev
 
-# World News Feedds
+# World News Feeds
 https://www.youtube.com/feeds/videos.xml?channel_id=UCknLrEdhRCp1aegoMqRaCZg "~News - DW" ! news
 https://www.youtube.com/feeds/videos.xml?channel_id=UC52X5wxOL_s5yw0dQk7NtgA "~News - AP" ! news
 https://www.youtube.com/feeds/videos.xml?channel_id=UCK7tptUDHh-RYDsdxO1-5QQ "~News - Wall Street Journal" ! news
@@ -88,5 +83,3 @@ https://www.youtube.com/feeds/videos.xml?channel_id=UCIALMKvObZNtJ6AmdCLP7Lg "~N
 https://www.youtube.com/feeds/videos.xml?channel_id=UChqUTb7kYRX8-EiaN3XFrSQ "~News - Reuters " ! news
 https://www.reddit.com/r/worldnews/top/.rss?sort=top&t=day&limit=10 "~News - Reddit - World News" ! news
 https://www.reddit.com/r/europe/top/.rss?sort=top&t=day&limit=10 "~News - Reddit - Europe" ! news
-
-"query:Latest World News:tags # \"news\" and age < 2 and unread = \"yes\""
