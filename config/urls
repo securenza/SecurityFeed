@@ -20,7 +20,7 @@ https://nvd.nist.gov/feeds ! security
 
 # Fresh from the press
 
-"query:Security News:tags # \"security\" and age < 2 and unread = \"yes\""
+"query:Security News:tags # \"security\" and age < 3 and unread = \"yes\""
 
 # Reddit NetSec Feed
 https://www.reddit.com/r/netsec/top/.rss?t=week "~Reddit - NetSec" netsec
@@ -35,20 +35,21 @@ https://www.cisa.gov/uscert/ncas/alerts/alerts.xml ! threatintel
 https://securityintelligence.com/feed ! threatintel
 https://isc.sans.edu/rssfeed.xml ! threatintel
 
-"query:Threat Intelligence:tags # \"threatintel\" and age < 2 and unread = \"yes\""
+"query:Threat Intelligence:tags # \"threatintel\" and age < 3 and unread = \"yes\""
 
 # Data breaches
 https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/leaks.xml "~Recent Data breaches" ! databreach 
 https://www.databreaches.net/feed/ "~Recent Data breaches" ! databreach
 https://krebsonsecurity.com/category/data-breaches/feed/ "~Recent Data breaches" ! databreach
 
-"query:Latest Data breaches:tags # \"databreach\" and age < 2 and unread = \"yes\""
+"query:Latest Data breaches:tags # \"databreach\" and age < 3 and unread = \"yes\""
 
-https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/ransomware.xml "~Latest Ransomware Attacks" ransomware 
+# https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/ransomware.xml "~Latest Ransomware Attacks" ransomware 
+# https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/eol.xml "~End of Life" eol
+
 https://vuldb.com/?rss.recent "~Recent Vulnerabilities" vulns
-https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/eol.xml "~End of Life" eol
 
-https://tweakers.net/feeds/nieuws.xml "~Tweakers.net News" tweakers 
+https://tweakers.net/feeds/nieuws.xml "~Tweakers" tweakers 
 
 # Tech Feeds
 https://techcrunch.com/feed/ ! tech
