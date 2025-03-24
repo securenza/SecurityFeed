@@ -37,10 +37,18 @@ https://isc.sans.edu/rssfeed.xml ! threatintel
 
 "query:Threat Intelligence:tags # \"threatintel\" and age < 2 and unread = \"yes\""
 
-https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/leaks.xml "~Recent Data breaches" databreach 
+# Data breaches
+https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/leaks.xml "~Recent Data breaches" ! databreach 
+https://www.databreaches.net/feed/ "~Recent Data breaches" ! databreach
+https://krebsonsecurity.com/category/data-breaches/feed/ "~Recent Data breaches" ! databreach
+
+"query:Latest Data breaches:tags # \"databreach\" and age < 2 and unread = \"yes\""
+
 https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/ransomware.xml "~Latest Ransomware Attacks" ransomware 
-https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/cve2025.xml "~Recent Critical Vulnerabilities" vulns
+https://vuldb.com/?rss.recent "~Recent Vulnerabilities" vulns
 https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/eol.xml "~End of Life" eol
+
+https://tweakers.net/feeds/nieuws.xml "~Tweakers.net News" tweakers 
 
 # Tech Feeds
 https://techcrunch.com/feed/ ! tech
@@ -51,13 +59,14 @@ https://hackernoon.com/feed "~Tech - HackerNoon" ! tech
 
 "query:Tech News:tags # \"tech\" and age < 2 and unread = \"yes\""
 
+
 # Podcasts
 https://securityweekly.com/feed/podcast "~Podcast - Security Weekly" ! podcast
 https://www.youtube.com/feeds/videos.xml?channel_id=UCzQUP1qoWDoEbmsQxvdjxgQ "~Podcast - Joe Rogan" ! podcast
 https://www.youtube.com/feeds/videos.xml?channel_id=UCSHZKyawb77ixDdsGog4iWA "~Podcast - Lex Fridman" ! podcast
 https://www.youtube.com/feeds/videos.xml?channel_id=UCl9StMQ79LtEvlrskzjoYbQ "~Podcast - Closer to Truth" ! podcast   
 
-"query:Podcasts:tags # \"podcast\" and age < 10 and unread = \"yes\""
+"query:Podcasts:tags # \"podcast\" and age < 30 and unread = \"yes\""
 
 # Youtube Channels
 # Seytonic
