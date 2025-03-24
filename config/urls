@@ -1,5 +1,11 @@
-# Security News Feeds
-https://feeds.feedburner.com/TheHackersNews ! security
+# Newsboat syntax: URL "~Title" [!:hide] tag...
+# example: https://rss.feed "~SampleTitle"  tag1 tag2 
+# 
+# feed agregation syntax: "query:Title:tags # \"tag1\"" and age <= {day:int}
+# example: query:<name of feed>:<filter expression> [<tag> ...]
+
+# Security Feed URLs
+https://feeds.feedburner.com/TheHackersNews ! security 
 https://krebsonsecurity.com/feed/ ! security
 https://www.schneier.com/blog/atom.xml ! security
 https://threatpost.com/feed ! security
@@ -12,7 +18,9 @@ https://blog.talosintelligence.com/feeds/posts/default ! security
 https://msrc-blog.microsoft.com/feed/ ! security
 https://nvd.nist.gov/feeds ! security
 
-"query:Security News:tags # \"security\" and age < 3 and unread = \"yes\""
+# Fresh from the press
+
+"query:Security News:tags # \"security\" and age < 2 and unread = \"yes\""
 
 # Reddit NetSec Feed
 https://www.reddit.com/r/netsec/top/.rss?t=week "~Reddit - NetSec" netsec
@@ -27,23 +35,12 @@ https://www.cisa.gov/uscert/ncas/alerts/alerts.xml ! threatintel
 https://securityintelligence.com/feed ! threatintel
 https://isc.sans.edu/rssfeed.xml ! threatintel
 
-"query:Threat Intelligence:tags # \"threatintel\" and age < 5 and unread = \"yes\""
+"query:Threat Intelligence:tags # \"threatintel\" and age < 2 and unread = \"yes\""
 
-https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/leaks.xml "~Recent Data breaches" databreach security
-https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/ransomware.xml "~Latest Ransomware Attacks" ransomware security
-https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/cve2025.xml "~Recent Critical Vulnerabilities" vulns security
-https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/eol.xml "~End of Life" eol security
-
-# Youtube Channels
-# Seytonic
-https://www.youtube.com/feeds/videos.xml?channel_id=UCW6xlqxSY3gGur4PkGPEUeA ! yt
-# Darknet Diaries
-https://www.youtube.com/feeds/videos.xml?channel_id=UCMIqrmh2lMdzhlCPK5ahsAg ! yt
-
-"query:Youtube:tags # \"yt\""
-
-# Hacker News Feed
-https://hnrss.org/best "~HackerNews" dev
+https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/leaks.xml "~Recent Data breaches" databreach 
+https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/ransomware.xml "~Latest Ransomware Attacks" ransomware 
+https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/cve2025.xml "~Recent Critical Vulnerabilities" vulns
+https://raw.githubusercontent.com/Cybermonit/RSS-Feed/refs/heads/main/eol.xml "~End of Life" eol
 
 # Tech Feeds
 https://techcrunch.com/feed/ ! tech
@@ -54,22 +51,32 @@ https://hackernoon.com/feed "~Tech - HackerNoon" ! tech
 
 "query:Tech News:tags # \"tech\" and age < 2 and unread = \"yes\""
 
+# Podcasts
+https://securityweekly.com/feed/podcast "~Podcast - Security Weekly" ! podcast
+https://www.youtube.com/feeds/videos.xml?channel_id=UCzQUP1qoWDoEbmsQxvdjxgQ "~Podcast - Joe Rogan" ! podcast
+https://www.youtube.com/feeds/videos.xml?channel_id=UCSHZKyawb77ixDdsGog4iWA "~Podcast - Lex Fridman" ! podcast
+https://www.youtube.com/feeds/videos.xml?channel_id=UCl9StMQ79LtEvlrskzjoYbQ "~Podcast - Closer to Truth" ! podcast   
+
+"query:Podcasts:tags # \"podcast\" and age < 10 and unread = \"yes\""
+
+# Youtube Channels
+# Seytonic
+https://www.youtube.com/feeds/videos.xml?channel_id=UCW6xlqxSY3gGur4PkGPEUeA ! yt
+# Darknet Diaries
+https://www.youtube.com/feeds/videos.xml?channel_id=UCMIqrmh2lMdzhlCPK5ahsAg ! yt
+
+"query:Youtube:tags # \"yt\""
+
+# Hacker News Feed
+https://hnrss.org/best "~Best of HackerNews" dev
+
 # World News Feedds
-https://www.youtube.com/feeds/videos.xml?channel_id=UCknLrEdhRCp1aegoMqRaCZg "~News - DW" ! news" 
-https://www.youtube.com/feeds/videos.xml?channel_id=UC52X5wxOL_s5yw0dQk7NtgA "~News - AP" ! news"
+https://www.youtube.com/feeds/videos.xml?channel_id=UCknLrEdhRCp1aegoMqRaCZg "~News - DW" ! news
+https://www.youtube.com/feeds/videos.xml?channel_id=UC52X5wxOL_s5yw0dQk7NtgA "~News - AP" ! news
 https://www.youtube.com/feeds/videos.xml?channel_id=UCK7tptUDHh-RYDsdxO1-5QQ "~News - Wall Street Journal" ! news
 https://www.youtube.com/feeds/videos.xml?channel_id=UCIALMKvObZNtJ6AmdCLP7Lg "~News - Bloomberg " ! news
 https://www.youtube.com/feeds/videos.xml?channel_id=UChqUTb7kYRX8-EiaN3XFrSQ "~News - Reuters " ! news
-https://www.reddit.com/r/worldnews/top/.rss?sort=top&t=day&limit=10 "~News - Reddit - World News" ! news reddit
-https://www.reddit.com/r/europe/top/.rss?sort=top&t=day&limit=10 "~News - Reddit - Europe" ! news reddit
+https://www.reddit.com/r/worldnews/top/.rss?sort=top&t=day&limit=10 "~News - Reddit - World News" ! news
+https://www.reddit.com/r/europe/top/.rss?sort=top&t=day&limit=10 "~News - Reddit - Europe" ! news
 
-"query:World News:tags # \"news\" and age < 1 and unread = \"yes\""
-
-# Podcasts
-https://securityweekly.com/feed/podcast "~Security Podcast" security ! podcast
-https://www.youtube.com/feeds/videos.xml?channel_id=UCzQUP1qoWDoEbmsQxvdjxgQ "~Podcast - Joe Rogan" ! podcast
-https://www.youtube.com/feeds/videos.xml?channel_id=UCSHZKyawb77ixDdsGog4iWA "~Podcast - Lex Fridman" ! podcast
-https://www.youtube.com/feeds/videos.xml?channel_id=UCl9StMQ79LtEvlrskzjoYbQ "~Podcast - Closer to Truth" ! podcast
-
-"query:Podcasts:tags # \"podcast\" and unread = \"yes\""
-
+"query:Latest World News:tags # \"news\" and age < 2 and unread = \"yes\""
