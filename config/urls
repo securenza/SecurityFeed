@@ -8,6 +8,7 @@
 "query:Security News:tags # \"security\" and age < 3 and unread = \"yes\""
 "query:Threat Intelligence:tags # \"threatintel\" and age < 3 and unread = \"yes\""
 "query:Latest Data breaches:tags # \"databreach\" and age < 3 and unread = \"yes\""
+"query:Reddit - NetSec:tags # \"netsec\" and age < 3 and unread = \"yes\""
 "query:Tech News:tags # \"tech\" and age < 2 and unread = \"yes\""
 "query:Podcasts:tags # \"podcast\" and age < 30 and unread = \"yes\""
 "query:Youtube:tags # \"yt\""
@@ -28,9 +29,8 @@ https://blog.talosintelligence.com/feeds/posts/default ! security
 https://msrc-blog.microsoft.com/feed/ ! security
 https://nvd.nist.gov/feeds ! security
 
-
 # Reddit NetSec Feed
-https://www.reddit.com/r/netsec/top/.rss?t=week "~Reddit - NetSec" netsec
+https://www.reddit.com/r/netsec/top/.rss?t=week "~Reddit - NetSec" ! netsec
 
 # Threat Intelligence Feeds
 https://blog.talosintelligence.com/feeds/posts/default ! threatintel
@@ -52,7 +52,7 @@ https://krebsonsecurity.com/category/data-breaches/feed/ "~Recent Data breaches"
 # Recent Vulns
 https://vuldb.com/?rss.recent "~Recent Vulnerabilities" vulns
 
-https://tweakers.net/feeds/nieuws.xml "~Tweakers" tweakers 
+https://tweakers.net/feeds/nieuws.xml "~Tweakers" tweakers
 
 # Tech Feeds
 https://techcrunch.com/feed/ ! tech
@@ -65,7 +65,7 @@ https://hackernoon.com/feed "~Tech - HackerNoon" ! tech
 https://securityweekly.com/feed/podcast "~Podcast - Security Weekly" ! podcast
 https://www.youtube.com/feeds/videos.xml?channel_id=UCzQUP1qoWDoEbmsQxvdjxgQ "~Podcast - Joe Rogan" ! podcast
 https://www.youtube.com/feeds/videos.xml?channel_id=UCSHZKyawb77ixDdsGog4iWA "~Podcast - Lex Fridman" ! podcast
-https://www.youtube.com/feeds/videos.xml?channel_id=UCl9StMQ79LtEvlrskzjoYbQ "~Podcast - Closer to Truth" ! podcast   
+https://www.youtube.com/feeds/videos.xml?channel_id=UCl9StMQ79LtEvlrskzjoYbQ "~Podcast - Closer to Truth" ! podcast
 
 # Seytonic
 https://www.youtube.com/feeds/videos.xml?channel_id=UCW6xlqxSY3gGur4PkGPEUeA ! yt
