@@ -6,7 +6,7 @@
 # set to '/'
 site_path = "/"
 # Title of the site
-title = "Cyber Security NewsFeed"
+title = "Cyber Security News"
 # Update site url if you're planning on using aggregated OPML
 # channel Liveboat exposes.
 site_url = "https://news.securenza.be"
