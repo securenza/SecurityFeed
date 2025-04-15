@@ -4,9 +4,9 @@
 # hosted as default page for the user 
 # (eg <username>.github.io), in that case it should be
 # set to '/'
-site_path = "/SecurityFeed/"
+site_path = "/"
 # Title of the site
-title = "SecurityFeed"
+title = "Cyber Security NewsFeed"
 # Update site url if you're planning on using aggregated OPML
 # channel Liveboat exposes.
 site_url = "https://news.securenza.be"
