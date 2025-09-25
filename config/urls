@@ -1,17 +1,14 @@
 # Newsboat syntax: URL "~Title" [!:hide] tag...
 # example: https://rss.feed "~SampleTitle"  tag1 tag2 
-# 
 # feed agregation syntax: "query:Title:tags # \"tag1\"" and age <= {day:int}
 # example: query:<name of feed>:<filter expression> [<tag> ...]
 
 # Queries
-"query:Security News:tags # \"security\" and age < 3 and unread = \"yes\""
-"query:Threat Intelligence:tags # \"threatintel\" and age < 3 and unread = \"yes\""
-"query:Latest Data breaches:tags # \"databreach\" and age < 3 and unread = \"yes\""
 "query:Reddit - NetSec:tags # \"netsec\" and age < 3 and unread = \"yes\""
+"query:Security News:tags # \"security\" \"yt\" and age < 3 and unread = \"yes\""
+"query:Latest Data breaches:tags # \"databreach\" and age < 3 and unread = \"yes\""
+"query:Threat Intelligence:tags # \"threatintel\" and age < 3 and unread = \"yes\""
 "query:Tech News:tags # \"tech\" and age < 2 and unread = \"yes\""
-"query:Podcasts:tags # \"podcast\" and age < 30 and unread = \"yes\""
-"query:Youtube:tags # \"yt\""
 "query:Latest World News:tags # \"news\" and age < 2 and unread = \"yes\""
 
 
