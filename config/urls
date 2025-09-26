@@ -5,7 +5,7 @@
 
 # Queries
 "query:Reddit - NetSec:tags # \"netsec\" and age < 3 and unread = \"yes\""
-"query:Security News:tags # \"security\" \"yt\" and age < 3 and unread = \"yes\""
+"query:Security News:tags # \"security\" and age < 3 and unread = \"yes\""
 "query:Latest Data breaches:tags # \"databreach\" and age < 3 and unread = \"yes\""
 "query:Threat Intelligence:tags # \"threatintel\" and age < 3 and unread = \"yes\""
 "query:Tech News:tags # \"tech\" and age < 2 and unread = \"yes\""
@@ -28,6 +28,11 @@ https://nvd.nist.gov/feeds ! security
 
 # Reddit NetSec Feed
 https://www.reddit.com/r/netsec/top/.rss?t=week "~Reddit - NetSec" ! netsec
+
+# Seytonic
+https://www.youtube.com/feeds/videos.xml?channel_id=UCW6xlqxSY3gGur4PkGPEUeA ! security
+# Darknet Diaries
+https://www.youtube.com/feeds/videos.xml?channel_id=UCMIqrmh2lMdzhlCPK5ahsAg ! security
 
 # Threat Intelligence Feeds
 https://blog.talosintelligence.com/feeds/posts/default ! threatintel
@@ -63,11 +68,6 @@ https://securityweekly.com/feed/podcast "~Podcast - Security Weekly" ! podcast
 https://www.youtube.com/feeds/videos.xml?channel_id=UCzQUP1qoWDoEbmsQxvdjxgQ "~Podcast - Joe Rogan" ! podcast
 https://www.youtube.com/feeds/videos.xml?channel_id=UCSHZKyawb77ixDdsGog4iWA "~Podcast - Lex Fridman" ! podcast
 https://www.youtube.com/feeds/videos.xml?channel_id=UCl9StMQ79LtEvlrskzjoYbQ "~Podcast - Closer to Truth" ! podcast
-
-# Seytonic
-https://www.youtube.com/feeds/videos.xml?channel_id=UCW6xlqxSY3gGur4PkGPEUeA ! yt
-# Darknet Diaries
-https://www.youtube.com/feeds/videos.xml?channel_id=UCMIqrmh2lMdzhlCPK5ahsAg ! yt
 
 # Hacker News Feed
 https://hnrss.org/best "~Best of HackerNews" dev
